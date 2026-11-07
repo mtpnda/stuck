@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000000" flood-opacity="0.15" />
+    </filter>
+  </defs>
+  <!-- Warm Oat Canvas -->
+  <rect width="1024" height="1024" fill="#F2F0EA" />
+  
+  <!-- BioCue Charcoal Container -->
+  <rect x="84" y="84" width="856" height="856" rx="220" fill="#1C1814" filter="url(#softShadow)" />
+  
+  <!-- Stack of Bars (Cognitive Load Architecture) -->
+  <!-- Bar 1: Calm Sage (Focused) -->
+  <rect x="322" y="328" width="380" height="76" rx="38" fill="#4A7C59" />
+  <!-- Bar 2: Crisp Oat (Active Context) -->
+  <rect x="212" y="452" width="600" height="76" rx="38" fill="#FCFBF8" />
+  <!-- Bar 3: Warm Oat (Parked Context) -->
+  <rect x="272" y="576" width="480" height="76" rx="38" fill="#F2F0EA" />
+  <!-- Bar 4: Alert Coral (Cognitive Limit Alert) -->
+  <rect x="382" y="700" width="260" height="76" rx="38" fill="#C84B31" />
+</svg>

@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:hono@^4.4.0": "4.13.16"
+  },
+  "npm": {
+    "hono@4.13.16": {
+      "integrity": "sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@hono/swagger-ui@0.4",
+      "npm:@hono/zod-openapi@0.14",
+      "npm:hono@^4.4.0",
+      "npm:zod@^3.23.8"
+    ]
+  }
+}

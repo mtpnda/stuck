@@ -1,0 +1,44 @@
+# Root ignores
+.DS_Store
+*.swp
+*~
+
+# iOS Build artifacts
+ios/build/
+ios/build_*/
+ios/DerivedData/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcresult
+
+# Android Build artifacts
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+*.apk
+*.aab
+
+# Temp & caches
+build/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Keystores & Signing Secrets
+*.jks
+*.keystore
+*play-account.json
+*-account.json
+google-services.json
+
+# Fastlane generated reports
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+
+# Local Telegram uploads & foreign runners
+.telegram-uploads/
+artemis-ansible-runner/
+
+

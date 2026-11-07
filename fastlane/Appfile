@@ -1,0 +1,11 @@
+# ==============================================================================
+# Context App Fastlane Appfile
+# ==============================================================================
+
+app_identifier(ENV["IOS_BUNDLE_ID"] || "com.contexts.app")
+apple_id(ENV["APPLE_ID"]) if ENV["APPLE_ID"]
+team_id(ENV["DEVELOPMENT_TEAM"] || "3T5F877TAB")
+itc_team_id(ENV["ITC_TEAM_ID"]) if ENV["ITC_TEAM_ID"]
+
+package_name(ENV["ANDROID_PACKAGE_NAME"] || "com.contexts.app")
+json_key_file(ENV["SUPPLY_JSON_KEY"]) if ENV["SUPPLY_JSON_KEY"]

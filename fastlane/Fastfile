@@ -1,0 +1,24 @@
+# ==============================================================================
+# ContextApp Fastlane Release Pipeline
+# Auto-loads the central release engine with local-first and git fallback
+# ==============================================================================
+opt_out_usage
+
+central_fastfile = File.expand_path("~/.gemini/config/plugins/central-agents/skills/reusable-fastlane/Fastfile")
+
+if File.exist?(central_fastfile)
+  import(central_fastfile)
+else
+  import_from_git(
+    url: "git@github.com:mtpnda/central-agents.git",
+    path: "skills/reusable-fastlane/Fastfile"
+  )
+end
+
+# Project overrides
+ENV["APP_NAME"]     ||= "ContextApp"
+ENV["PACKAGE_NAME"] ||= "com.mtpnda.stuck"
+
+def stuck_apps_dir
+  File.join(dest_dir, "apps/stuck")
+end

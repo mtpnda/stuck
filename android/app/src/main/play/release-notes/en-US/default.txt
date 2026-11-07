@@ -1,0 +1,5 @@
+• Welcome to Stuck v1.0.0 — Unstick your thoughts.
+• 4-stage cognitive load workflow: Coming Up, In Your Head, Parked, and Closed.
+• Signature Stack-of-Bars visual capacity indicator.
+• Native Jetpack Compose on Android & native SwiftUI on iOS.
+• 100% on-device zero-cloud storage with biometric protection.

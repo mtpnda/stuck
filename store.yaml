@@ -1,0 +1,57 @@
+# ==============================================================================
+# Mata Panda Studio: Store-as-Code Single Source of Truth
+# Automatically compiled into Google Play & App Store metadata
+# ==============================================================================
+app:
+  id: "com.mtpnda.stuck"
+  name: "Context"
+  title: "Stuck"
+  short_description: "Unstick your thoughts. Serene cognitive load balancer & 4-stage task flow."
+  theme_color: "#86EFAC"
+
+targets:
+  android:
+    path: "android/app/src/main/play"
+
+links:
+  website: "https://context.matapandastudio.deno.net"
+  privacy_policy: "https://context.matapandastudio.deno.net/privacy"
+  support_email: "support@matapandastudio.com"
+
+release:
+  version_name: "0.1.0"
+  version_code: 1
+  changelog: "• Welcome to Stuck v1.0.0 — Unstick your thoughts.
+• 4-stage cognitive load workflow: Coming Up, In Your Head, Parked, and Closed.
+• Signature Stack-of-Bars visual capacity indicator.
+• Native Jetpack Compose on Android & native SwiftUI on iOS.
+• 100% on-device zero-cloud storage with biometric protection."
+
+full_description: |
+  Stuck is a minimalist Scandinavian cognitive load manager and capacity balancer designed to bring serenity to your workflow when your mind feels overloaded.
+  
+  When too many thoughts, open loops, and pending decisions pile up, you feel stuck. Stuck gives you a calm, tactile mental container to externalize what is in your head, balance your cognitive load, and move with clarity.
+  
+  KEY CAPABILITIES:
+  
+  1. Cognitive Load Balancing
+  Set your maximum active headspace capacity (default 3 active contexts). When you attempt to juggle more than your set capacity, Stuck highlights the overload in alert coral, guiding you to park or close existing contexts before taking on more.
+  
+  2. 4-Stage Thought Flow
+  Move contexts through their natural life cycle:
+  • Coming Up: Queued for later or tomorrow.
+  • In Your Head: Actively holding your focus today.
+  • Parked: Safely written down and cleared from your headspace.
+  • Closed: Resolved with focus time and metrics preserved.
+  
+  3. Signature Stack-of-Bars Visual Architecture
+  A visual stack of cognitive bars gives you an instant, calm gauge of your mental bandwidth. Green calm sage signifies focused presence, while coral highlights cognitive overload.
+  
+  4. Built-in Focus Sessions
+  Tap "Work on" on any active context to start a distraction-free focus timer. Track how much undivided attention you dedicate to each thought.
+  
+  5. 100% Zero-Cloud Privacy
+  All data is stored exclusively on your device using encrypted local storage. No remote servers, no tracking, and no external analytics.
+  
+  6. Fast BioCue Authentication
+  Instant 1-tap Guest demo mode, Google Sign-In, and local biometric security (Face ID & Fingerprint) for instant access.
