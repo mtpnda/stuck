@@ -22,7 +22,7 @@ Deno.test("Privacy Policy includes required sovereign compliance sections", asyn
 
   // 4. Data retention and contact
   assertEquals(html.includes("section-7"), true);
-  assertEquals(html.includes("support@matapandastudio.com"), true);
+  assertEquals(html.includes("info@valdiearsanur.com"), true);
 
   // 5. COPPA & Children's privacy
   assertEquals(html.includes("COPPA"), true);

@@ -101,7 +101,7 @@ export function renderTermsPage(): string {
           For legal inquiries regarding these terms, please contact:
         </p>
         <p>
-          Email: <a href="mailto:support@matapandastudio.com" style="color: var(--text-primary); font-weight: 700; text-decoration: underline;">support@matapandastudio.com</a><br/>
+          Email: <a href="mailto:info@valdiearsanur.com" style="color: var(--text-primary); font-weight: 700; text-decoration: underline;">info@valdiearsanur.com</a><br/>
           Studio: Mata Panda Studio
         </p>
       </div>

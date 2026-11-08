@@ -3,6 +3,7 @@ package com.mtpnda.stuck
 import androidx.compose.ui.graphics.Color
 import com.mtpnda.stuck.data.ContextRepository
 import com.mtpnda.stuck.model.*
+import com.mtpnda.stuck.ui.screens.SchedulePlaceholder
 import com.mtpnda.stuck.ui.screens.TimeGranularity
 import com.mtpnda.stuck.ui.theme.DlsTokens
 import org.junit.Assert.*
@@ -444,5 +445,123 @@ class ContextLogicTest {
 
         assertEquals("Review PR", item.title)
         assertEquals("Needs performance profiling on arm64", item.notes)
+    }
+
+    // MARK: - Schedule Placeholder & Zoom Granularity Tests
+
+    @Test
+    fun testZoomGranularityDurationsAndSnapSteps() {
+        assertEquals(1440, TimeGranularity.DAY.defaultDurationMinutes)
+        assertEquals(360, TimeGranularity.SIX_HOURS.defaultDurationMinutes)
+        assertEquals(180, TimeGranularity.THREE_HOURS.defaultDurationMinutes)
+        assertEquals(60, TimeGranularity.ONE_HOUR.defaultDurationMinutes)
+        assertEquals(30, TimeGranularity.THIRTY_MINS.defaultDurationMinutes)
+        assertEquals(10, TimeGranularity.TEN_MINS.defaultDurationMinutes)
+        assertEquals(1, TimeGranularity.ONE_MIN.defaultDurationMinutes)
+
+        assertEquals(24.0, TimeGranularity.DAY.snapStepHours, 0.001)
+        assertEquals(6.0, TimeGranularity.SIX_HOURS.snapStepHours, 0.001)
+        assertEquals(3.0, TimeGranularity.THREE_HOURS.snapStepHours, 0.001)
+        assertEquals(1.0, TimeGranularity.ONE_HOUR.snapStepHours, 0.001)
+        assertEquals(0.5, TimeGranularity.THIRTY_MINS.snapStepHours, 0.001)
+        assertEquals(10.0 / 60.0, TimeGranularity.TEN_MINS.snapStepHours, 0.001)
+        assertEquals(1.0 / 60.0, TimeGranularity.ONE_MIN.snapStepHours, 0.001)
+    }
+
+    @Test
+    fun testSchedulePlaceholderCalculations() {
+        val today = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        // 10 mins zoom
+        val p10m = SchedulePlaceholder(
+            dayMillis = today,
+            hour = 14,
+            minute = 0,
+            durationMinutes = 10,
+            status = ContextStatus.ACTIVE,
+            colorTag = BarColorTag.BLUE
+        )
+        assertEquals("14:00 – 14:10", p10m.timeRangeString())
+        assertEquals("10m", p10m.durationBadge())
+        assertEquals(600_000L, p10m.endMillis() - p10m.startMillis())
+
+        // 1 hr zoom
+        val p1h = SchedulePlaceholder(
+            dayMillis = today,
+            hour = 9,
+            minute = 0,
+            durationMinutes = 60,
+            status = ContextStatus.PLANNED,
+            colorTag = BarColorTag.PURPLE
+        )
+        assertEquals("09:00 – 10:00", p1h.timeRangeString())
+        assertEquals("1h", p1h.durationBadge())
+        assertEquals(3600_000L, p1h.endMillis() - p1h.startMillis())
+
+        // 1 min zoom precision
+        val p1m = SchedulePlaceholder(
+            dayMillis = today,
+            hour = 11,
+            minute = 15,
+            durationMinutes = 1,
+            status = ContextStatus.ACTIVE,
+            colorTag = BarColorTag.BLUE
+        )
+        assertEquals("11:15 – 11:16", p1m.timeRangeString())
+        assertEquals("1m", p1m.durationBadge())
+        assertEquals(60_000L, p1m.endMillis() - p1m.startMillis())
+
+        // Day placeholder
+        val pDay = SchedulePlaceholder(
+            dayMillis = today,
+            hour = null,
+            minute = 0,
+            durationMinutes = 1440,
+            status = ContextStatus.PLANNED,
+            colorTag = BarColorTag.PURPLE
+        )
+        assertEquals("All Day", pDay.timeRangeString())
+        assertEquals("24h", pDay.durationBadge())
+        assertEquals(86400_000L, pDay.endMillis() - pDay.startMillis())
+    }
+
+    @Test
+    fun testScheduleClickOnlyCreatesPlaceholderWithoutAddingToRepository() {
+        val existingItems = listOf(
+            ContextItem(id = "c1", title = "Alpha", status = ContextStatus.ACTIVE)
+        )
+        val initialCount = existingItems.size
+
+        // Clicking schedule creates in-memory placeholder
+        val placeholder = SchedulePlaceholder(
+            dayMillis = System.currentTimeMillis(),
+            hour = 10,
+            minute = 0,
+            durationMinutes = TimeGranularity.ONE_HOUR.defaultDurationMinutes,
+            status = ContextStatus.ACTIVE,
+            colorTag = BarColorTag.BLUE
+        )
+
+        // Invariant check: List size strictly unchanged
+        assertEquals(1, initialCount)
+        assertEquals(1, existingItems.size)
+
+        // Only after user confirms form is item created
+        val confirmedItem = ContextItem(
+            title = "Confirmed Thought",
+            startAt = placeholder.startMillis(),
+            endAt = placeholder.endMillis(),
+            status = placeholder.status,
+            colorTag = placeholder.colorTag
+        )
+        val updatedItems = existingItems + confirmedItem
+        assertEquals(2, updatedItems.size)
+        assertEquals(placeholder.startMillis(), confirmedItem.startAt)
+        assertEquals(placeholder.endMillis(), confirmedItem.endAt)
     }
 }

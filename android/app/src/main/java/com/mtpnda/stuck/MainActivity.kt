@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
                     var isShowingNewSheet by remember { mutableStateOf(false) }
                     var newSheetInitialStatus by remember { mutableStateOf(ContextStatus.ACTIVE) }
                     var newSheetInitialDate by remember { mutableStateOf(System.currentTimeMillis()) }
+                    var newSheetInitialEndDate by remember { mutableStateOf<Long?>(null) }
 
                     if (profile == null) {
                         LoginScreen(repository = repository)
@@ -50,7 +51,11 @@ class MainActivity : ComponentActivity() {
                             contextId = null,
                             initialStatus = newSheetInitialStatus,
                             initialDate = newSheetInitialDate,
-                            onDismiss = { isShowingNewSheet = false }
+                            initialEndDate = newSheetInitialEndDate,
+                            onDismiss = {
+                                isShowingNewSheet = false
+                                newSheetInitialEndDate = null
+                            }
                         )
                     } else if (sheetContextId != null) {
                         ContextSheet(
@@ -62,9 +67,10 @@ class MainActivity : ComponentActivity() {
                         BoardScreen(
                             repository = repository,
                             onOpenProfile = { isShowingProfile = true },
-                            onNewContext = { status, date ->
+                            onNewContext = { status, startDate, endDate ->
                                 newSheetInitialStatus = status
-                                newSheetInitialDate = date
+                                newSheetInitialDate = startDate
+                                newSheetInitialEndDate = endDate
                                 isShowingNewSheet = true
                             },
                             onEditContext = { id -> sheetContextId = id }

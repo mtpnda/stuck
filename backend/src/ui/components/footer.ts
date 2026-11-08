@@ -60,7 +60,7 @@ export function renderFooter(): string {
             <li><a href="/terms">Terms of Service</a></li>
             <li><a href="/support">Help & Support</a></li>
             <li><a href="/#privacy">Zero-Cloud Guarantee</a></li>
-            <li><a href="mailto:support@matapandastudio.com">support@matapandastudio.com</a></li>
+            <li><a href="mailto:info@valdiearsanur.com">info@valdiearsanur.com</a></li>
           </ul>
         </div>
       </div>

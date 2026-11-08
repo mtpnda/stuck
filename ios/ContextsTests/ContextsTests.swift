@@ -635,4 +635,113 @@ final class StuckTests: XCTestCase {
         XCTAssertEqual(item?.title, "Review PR")
         XCTAssertEqual(item?.notes, "Needs performance profiling on arm64")
     }
+
+    // MARK: - Schedule Placeholder & Zoom Granularity Tests
+
+    func testZoomGranularityDurationsAndSnapSteps() {
+        XCTAssertEqual(TimeGranularity.day.defaultDurationMinutes, 1440)
+        XCTAssertEqual(TimeGranularity.sixHours.defaultDurationMinutes, 360)
+        XCTAssertEqual(TimeGranularity.threeHours.defaultDurationMinutes, 180)
+        XCTAssertEqual(TimeGranularity.oneHour.defaultDurationMinutes, 60)
+        XCTAssertEqual(TimeGranularity.thirtyMins.defaultDurationMinutes, 30)
+        XCTAssertEqual(TimeGranularity.tenMins.defaultDurationMinutes, 10)
+        XCTAssertEqual(TimeGranularity.oneMin.defaultDurationMinutes, 1)
+
+        XCTAssertEqual(TimeGranularity.day.snapStepHours, 24.0)
+        XCTAssertEqual(TimeGranularity.sixHours.snapStepHours, 6.0)
+        XCTAssertEqual(TimeGranularity.threeHours.snapStepHours, 3.0)
+        XCTAssertEqual(TimeGranularity.oneHour.snapStepHours, 1.0)
+        XCTAssertEqual(TimeGranularity.thirtyMins.snapStepHours, 0.5)
+        XCTAssertEqual(TimeGranularity.tenMins.snapStepHours, 10.0 / 60.0)
+        XCTAssertEqual(TimeGranularity.oneMin.snapStepHours, 1.0 / 60.0)
+    }
+
+    func testSchedulePlaceholderCalculations() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+
+        // Hourly placeholder with 10 mins zoom
+        let placeholder10m = SchedulePlaceholder(
+            date: today,
+            hour: 14,
+            minute: 0,
+            durationMinutes: 10,
+            status: .active,
+            colorTag: .blue
+        )
+        XCTAssertEqual(placeholder10m.timeRangeString, "14:00 – 14:10")
+        XCTAssertEqual(placeholder10m.durationBadge, "10m")
+        XCTAssertEqual(placeholder10m.endDate().timeIntervalSince(placeholder10m.startDate()), 600)
+
+        // Hourly placeholder with 1 hr zoom
+        let placeholder1h = SchedulePlaceholder(
+            date: today,
+            hour: 9,
+            minute: 0,
+            durationMinutes: 60,
+            status: .planned,
+            colorTag: .purple
+        )
+        XCTAssertEqual(placeholder1h.timeRangeString, "09:00 – 10:00")
+        XCTAssertEqual(placeholder1h.durationBadge, "1h")
+        XCTAssertEqual(placeholder1h.endDate().timeIntervalSince(placeholder1h.startDate()), 3600)
+
+        // 1 min zoom precision placeholder
+        let placeholder1m = SchedulePlaceholder(
+            date: today,
+            hour: 11,
+            minute: 15,
+            durationMinutes: 1,
+            status: .active,
+            colorTag: .blue
+        )
+        XCTAssertEqual(placeholder1m.timeRangeString, "11:15 – 11:16")
+        XCTAssertEqual(placeholder1m.durationBadge, "1m")
+        XCTAssertEqual(placeholder1m.endDate().timeIntervalSince(placeholder1m.startDate()), 60)
+
+        // Day placeholder
+        let placeholderDay = SchedulePlaceholder(
+            date: today,
+            hour: nil,
+            minute: 0,
+            durationMinutes: 1440,
+            status: .planned,
+            colorTag: .purple
+        )
+        XCTAssertEqual(placeholderDay.timeRangeString, "All Day")
+        XCTAssertEqual(placeholderDay.durationBadge, "24h")
+        XCTAssertEqual(placeholderDay.endDate().timeIntervalSince(placeholderDay.startDate()), 86400)
+    }
+
+    func testScheduleClickOnlyCreatesPlaceholderWithoutAddingToStore() {
+        store.createProfile(name: "Test User", faceId: false)
+        let initialCount = store.contexts.count
+
+        // Simulating click on schedule: instantiating placeholder in memory
+        let placeholder = SchedulePlaceholder(
+            date: Date(),
+            hour: 10,
+            minute: 0,
+            durationMinutes: TimeGranularity.oneHour.defaultDurationMinutes,
+            status: .active,
+            colorTag: .blue
+        )
+
+        // Invariant check: Store count must strictly remain unchanged
+        XCTAssertEqual(store.contexts.count, initialCount, "Clicking schedule to create placeholder must NOT add to store")
+
+        // Only when user confirms form does it add to store
+        let id = store.addContext(
+            title: "Confirmed thought",
+            startAt: placeholder.startDate(),
+            endAt: placeholder.endDate(),
+            status: placeholder.status,
+            colorTag: placeholder.colorTag
+        )
+
+        XCTAssertEqual(store.contexts.count, initialCount + 1, "Context must only be saved after user confirms form")
+        let item = store.contexts.first { $0.id == id }
+        XCTAssertEqual(item?.startAt, placeholder.startDate())
+        XCTAssertEqual(item?.endAt, placeholder.endDate())
+    }
 }

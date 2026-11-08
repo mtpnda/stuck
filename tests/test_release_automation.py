@@ -74,6 +74,38 @@ class TestStuckReleaseAutomation(unittest.TestCase):
             content = f.read()
         self.assertIn("com.mtpnda.stuck", content)
         self.assertIn("CFBundleDisplayName: Stuck", content)
+        self.assertIn("Contexts/Assets.xcassets", content, "ios/project.yml must include Assets.xcassets in target sources")
+        self.assertIn("ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon", content)
+
+    def test_ios_app_icon_and_asset_catalog(self):
+        """Verifies iOS app icon asset catalog, XcodeGen source mapping, and no-alpha compliance."""
+        # 1. project.pbxproj must contain Assets.xcassets in Resources
+        pbxproj_path = os.path.join(PROJECT_ROOT, "ios", "Stuck.xcodeproj", "project.pbxproj")
+        self.assertTrue(os.path.isfile(pbxproj_path), "ios/Stuck.xcodeproj/project.pbxproj must exist")
+        with open(pbxproj_path, "r") as f:
+            pbx_content = f.read()
+        self.assertIn("Assets.xcassets in Resources", pbx_content, "Assets.xcassets must be included in Resources build phase")
+
+        # 2. Master 1024 icon must exist, be exactly 1024x1024, and have ColorType 2 (RGB, no alpha)
+        master_icon = os.path.join(PROJECT_ROOT, "ios", "Contexts", "Assets.xcassets", "AppIcon.appiconset", "AppIcon-1024.png")
+        self.assertTrue(os.path.isfile(master_icon), "AppIcon-1024.png must exist in AppIcon.appiconset")
+        with open(master_icon, "rb") as f:
+            header = f.read(26)
+        w, h = struct.unpack(">II", header[16:24])
+        color_type = header[25]
+        self.assertEqual((w, h), (1024, 1024), f"AppIcon-1024.png must be 1024x1024, got {w}x{h}")
+        self.assertEqual(color_type, 2, f"AppIcon-1024.png must be 24-bit RGB without alpha (ColorType 2), got {color_type}")
+
+        # 3. Contents.json must be valid and reference AppIcon-1024.png
+        contents_json = os.path.join(PROJECT_ROOT, "ios", "Contexts", "Assets.xcassets", "AppIcon.appiconset", "Contents.json")
+        self.assertTrue(os.path.isfile(contents_json), "Contents.json must exist in AppIcon.appiconset")
+        with open(contents_json, "r") as f:
+            import json
+            meta = json.load(f)
+        self.assertIn("images", meta)
+        filenames = [img.get("filename") for img in meta["images"]]
+        self.assertIn("AppIcon-1024.png", filenames)
+
 
     def test_play_store_metadata(self):
         """Verifies Google Play metadata meets strict character count, descriptions, release notes, and graphic dimensions."""

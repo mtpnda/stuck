@@ -23,11 +23,15 @@ struct ContextSheetView: View {
         initialStatus: ContextStatus = .active,
         initialDate: Date = Date(),
         initialEndDate: Date? = nil,
+        initialTitle: String = "",
+        initialIsBanner: Bool = false,
         onDismiss: (() -> Void)? = nil
     ) {
         self.store = store
         self.contextId = contextId
         self.onDismiss = onDismiss
+        self._title = State(initialValue: initialTitle)
+        self._isBanner = State(initialValue: initialIsBanner)
         self._status = State(initialValue: initialStatus)
         self._scheduledDate = State(initialValue: initialDate)
         if let end = initialEndDate {

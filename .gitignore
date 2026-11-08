@@ -36,6 +36,7 @@ google-services.json
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/
+fastlane/metadata_play/
 
 # Local Telegram uploads & foreign runners
 .telegram-uploads/

@@ -36,6 +36,84 @@ enum TimeGranularity: Int, CaseIterable, Identifiable {
         case .oneMin: return 210
         }
     }
+
+    /// Default duration in minutes for this zoom level
+    var defaultDurationMinutes: Int {
+        switch self {
+        case .day: return 24 * 60
+        case .sixHours: return 6 * 60
+        case .threeHours: return 3 * 60
+        case .oneHour: return 60
+        case .thirtyMins: return 30
+        case .tenMins: return 10
+        case .oneMin: return 1
+        }
+    }
+
+    /// Snap step in hours for drag-to-create
+    var snapStepHours: Double {
+        switch self {
+        case .day: return 24.0
+        case .sixHours: return 6.0
+        case .threeHours: return 3.0
+        case .oneHour: return 1.0
+        case .thirtyMins: return 0.5
+        case .tenMins: return 10.0 / 60.0
+        case .oneMin: return 1.0 / 60.0
+        }
+    }
+}
+
+struct SchedulePlaceholder: Equatable {
+    let date: Date
+    let hour: Int?
+    let minute: Int
+    let durationMinutes: Int
+    let status: ContextStatus
+    let colorTag: BarColorTag
+
+    var timeRangeString: String {
+        if let h = hour {
+            let startMin = minute
+            let totalEnd = h * 60 + startMin + durationMinutes
+            let endH = (totalEnd / 60) % 24
+            let endM = totalEnd % 60
+            return String(format: "%02d:%02d – %02d:%02d", h, startMin, endH, endM)
+        } else {
+            return "All Day"
+        }
+    }
+
+    var durationBadge: String {
+        if durationMinutes < 60 {
+            return "\(durationMinutes)m"
+        } else if durationMinutes % 60 == 0 {
+            return "\(durationMinutes / 60)h"
+        } else {
+            return String(format: "%.1fh", Double(durationMinutes) / 60.0)
+        }
+    }
+
+    func startDate(calendar: Calendar = .current) -> Date {
+        if let h = hour {
+            var comp = calendar.dateComponents([.year, .month, .day], from: date)
+            comp.hour = h
+            comp.minute = minute
+            comp.second = 0
+            return calendar.date(from: comp) ?? date
+        } else {
+            return calendar.startOfDay(for: date)
+        }
+    }
+
+    func endDate(calendar: Calendar = .current) -> Date {
+        if hour != nil {
+            return startDate(calendar: calendar).addingTimeInterval(TimeInterval(durationMinutes * 60))
+        } else {
+            let start = calendar.startOfDay(for: date)
+            return calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400)
+        }
+    }
 }
 
 struct BoardView: View {
@@ -47,6 +125,14 @@ struct BoardView: View {
     @State private var selectedStageFilter: ContextStatus? = nil
     @State private var quickThoughtText: String = ""
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
+    @State private var activePlaceholder: SchedulePlaceholder? = nil
+    @State private var newThoughtConfig: (status: ContextStatus, startDate: Date, endDate: Date?, title: String, isBanner: Bool)? = nil
+
+    private func openCreateForm(status: ContextStatus, startDate: Date, endDate: Date?, title: String = "", isBanner: Bool = false) {
+        newThoughtConfig = (status: status, startDate: startDate, endDate: endDate, title: title, isBanner: isBanner)
+        activePlaceholder = nil
+        isCreatingNew = true
+    }
 
     private var quickCaptureContext: (status: ContextStatus, colorTag: BarColorTag, scheduledDate: Date) {
         ContextStore.resolveQuickCaptureContext(
@@ -170,10 +256,14 @@ struct BoardView: View {
                     ContextSheetView(
                         store: store,
                         contextId: nil,
-                        initialStatus: quickCaptureContext.status,
-                        initialDate: quickCaptureContext.scheduledDate,
+                        initialStatus: newThoughtConfig?.status ?? quickCaptureContext.status,
+                        initialDate: newThoughtConfig?.startDate ?? quickCaptureContext.scheduledDate,
+                        initialEndDate: newThoughtConfig?.endDate,
+                        initialTitle: newThoughtConfig?.title ?? "",
+                        initialIsBanner: newThoughtConfig?.isBanner ?? false,
                         onDismiss: {
                             isCreatingNew = false
+                            newThoughtConfig = nil
                         }
                     )
                 }
@@ -251,7 +341,12 @@ struct BoardView: View {
 
             // Plus New Thought Button
             Button {
-                isCreatingNew = true
+                let dur = currentGranularity.defaultDurationMinutes * 60
+                openCreateForm(
+                    status: quickCaptureContext.status,
+                    startDate: quickCaptureContext.scheduledDate,
+                    endDate: quickCaptureContext.scheduledDate.addingTimeInterval(TimeInterval(dur))
+                )
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 16, weight: .bold))
@@ -544,7 +639,33 @@ struct BoardView: View {
 
                         // Slot Area with Guidelines
                         VStack(alignment: .leading, spacing: 4) {
-                            if matchingItems.isEmpty {
+                            if let placeholder = activePlaceholder,
+                               placeholder.hour == hour,
+                               cal.isDate(placeholder.date, inSameDayAs: date) {
+                                PlaceholderBarView(
+                                    placeholder: placeholder,
+                                    granularity: currentGranularity,
+                                    onConfirm: {
+                                        openCreateForm(
+                                            status: placeholder.status,
+                                            startDate: placeholder.startDate(),
+                                            endDate: placeholder.endDate(),
+                                            title: "Thought at \(formatHourLabel(hour))"
+                                        )
+                                    },
+                                    onHoldCreate: {
+                                        openCreateForm(
+                                            status: placeholder.status,
+                                            startDate: placeholder.startDate(),
+                                            endDate: placeholder.endDate(),
+                                            title: "Thought at \(formatHourLabel(hour))"
+                                        )
+                                    },
+                                    onDismiss: {
+                                        activePlaceholder = nil
+                                    }
+                                )
+                            } else if matchingItems.isEmpty {
                                 let isFuture = cal.startOfDay(for: date) > cal.startOfDay(for: Date())
                                 let targetStatus = selectedStageFilter ?? (isFuture ? ContextStatus.planned : ContextStatus.active)
                                 let targetColor: BarColorTag = (targetStatus == .planned) ? .purple : (targetStatus == .paused ? .charcoal : (targetStatus == .done ? .green : .blue))
@@ -553,30 +674,34 @@ struct BoardView: View {
                                     date: date,
                                     hour: hour,
                                     slotHeight: max(40, slotHeight),
+                                    granularity: currentGranularity,
                                     targetStatus: targetStatus,
                                     targetColor: targetColor,
                                     onQuickTap: {
-                                        var comp = cal.dateComponents([.year, .month, .day], from: date)
-                                        comp.hour = hour
-                                        comp.minute = 0
-                                        let target = cal.date(from: comp) ?? date
-                                        let id = store.addContext(
-                                            title: "Thought at \(formatHourLabel(hour))",
-                                            startAt: target,
+                                        activePlaceholder = SchedulePlaceholder(
+                                            date: date,
+                                            hour: hour,
+                                            minute: 0,
+                                            durationMinutes: currentGranularity.defaultDurationMinutes,
                                             status: targetStatus,
                                             colorTag: targetColor
                                         )
-                                        editingContextId = id
+                                    },
+                                    onHoldCreate: { startDate, endDate in
+                                        openCreateForm(
+                                            status: targetStatus,
+                                            startDate: startDate,
+                                            endDate: endDate,
+                                            title: "Thought at \(formatHourLabel(hour))"
+                                        )
                                     },
                                     onDragCreate: { startDate, endDate in
-                                        let id = store.addContext(
-                                            title: "Thought at \(formatHourLabel(hour))",
-                                            startAt: startDate,
-                                            endAt: endDate,
+                                        openCreateForm(
                                             status: targetStatus,
-                                            colorTag: targetColor
+                                            startDate: startDate,
+                                            endDate: endDate,
+                                            title: "Thought at \(formatHourLabel(hour))"
                                         )
-                                        editingContextId = id
                                     }
                                 )
                             } else {
@@ -671,33 +796,78 @@ struct BoardView: View {
         let defaultStatus = selectedStageFilter ?? (isFuture ? ContextStatus.planned : ContextStatus.active)
         let defaultColor: BarColorTag = (defaultStatus == .planned) ? .purple : (defaultStatus == .paused ? .charcoal : (defaultStatus == .done ? .green : .blue))
 
-        return Button {
-            let id = store.addContext(
-                title: "New thought",
-                startAt: date,
-                status: defaultStatus,
-                colorTag: defaultColor
-            )
-            editingContextId = id
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                Text("Add thought (\(defaultStatus.title))")
-                    .font(AppFont.labelSmall)
+        return Group {
+            if let placeholder = activePlaceholder,
+               placeholder.hour == nil,
+               Calendar.current.isDate(placeholder.date, inSameDayAs: date) {
+                PlaceholderBarView(
+                    placeholder: placeholder,
+                    granularity: currentGranularity,
+                    onConfirm: {
+                        openCreateForm(
+                            status: placeholder.status,
+                            startDate: placeholder.startDate(),
+                            endDate: placeholder.endDate(),
+                            title: "New thought"
+                        )
+                    },
+                    onHoldCreate: {
+                        openCreateForm(
+                            status: placeholder.status,
+                            startDate: placeholder.startDate(),
+                            endDate: placeholder.endDate(),
+                            title: "New thought"
+                        )
+                    },
+                    onDismiss: {
+                        activePlaceholder = nil
+                    }
+                )
+            } else {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    activePlaceholder = SchedulePlaceholder(
+                        date: date,
+                        hour: nil,
+                        minute: 0,
+                        durationMinutes: 24 * 60,
+                        status: defaultStatus,
+                        colorTag: defaultColor
+                    )
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Add thought (\(defaultStatus.title))")
+                            .font(AppFont.labelSmall)
+                    }
+                    .foregroundStyle(Palette.inkMuted.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(Palette.surface2.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .foregroundStyle(Palette.borderSubtle)
+                    )
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.22).onEnded { _ in
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        let start = Calendar.current.startOfDay(for: date)
+                        let end = Calendar.current.date(byAdding: .day, value: 1, to: start)
+                        openCreateForm(
+                            status: defaultStatus,
+                            startDate: start,
+                            endDate: end,
+                            title: "New thought"
+                        )
+                    }
+                )
             }
-            .foregroundStyle(Palette.inkMuted.opacity(0.7))
-            .frame(maxWidth: .infinity)
-            .frame(height: 38)
-            .background(Palette.surface2.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .foregroundStyle(Palette.borderSubtle)
-            )
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Bottom Quick Capture Bar
@@ -795,6 +965,95 @@ struct BoardView: View {
     }
 }
 
+// MARK: - Draft Placeholder Bar View (Tap to Confirm / Hold to Create)
+
+struct PlaceholderBarView: View {
+    let placeholder: SchedulePlaceholder
+    let granularity: TimeGranularity
+    let onConfirm: () -> Void
+    let onHoldCreate: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Dashed status indicator
+            Circle()
+                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                .foregroundStyle(Color(hex: "29B6F6"))
+                .frame(width: 14, height: 14)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Draft Placeholder")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Palette.inkPrimary)
+
+                    Text(placeholder.timeRangeString)
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color(hex: "0288D1"))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color(hex: "29B6F6").opacity(0.18))
+                        .clipShape(Capsule())
+                }
+
+                Text("Tap to edit & confirm • Hold to create event (\(granularity.label))")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+
+            Spacer(minLength: 0)
+
+            // Create Button
+            Button {
+                onConfirm()
+            } label: {
+                Text("Create")
+                    .font(AppFont.labelSmall)
+                    .foregroundStyle(Palette.onCharcoal)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Palette.actionPrimary)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            // Close / Dismiss Button
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Palette.inkMuted)
+                    .frame(width: 24, height: 24)
+                    .background(Palette.surfaceRaised)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(hex: "29B6F6").opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .foregroundStyle(Color(hex: "29B6F6").opacity(0.7))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onConfirm()
+        }
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.22).onEnded { _ in
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onHoldCreate()
+            }
+        )
+    }
+}
+
 // MARK: - Drag-to-Create Timeline Slot & Box View (Exact Match to User Brief)
 
 struct DragCreateBoxView: View {
@@ -804,7 +1063,7 @@ struct DragCreateBoxView: View {
     let stageColor: Color
 
     var height: CGFloat {
-        CGFloat(max(0.5, endHour - startHour)) * slotHeight
+        max(36, CGFloat(max(0.016, endHour - startHour)) * slotHeight)
     }
 
     var body: some View {
@@ -840,7 +1099,7 @@ struct DragCreateBoxView: View {
                         .clipShape(Capsule())
                 }
 
-                Text("Release to create thought")
+                Text("Release to review form & confirm")
                     .font(AppFont.labelSmall)
                     .foregroundStyle(Palette.inkSecondary)
             }
@@ -880,18 +1139,19 @@ struct DragCreateBoxView: View {
 
     private var timeRangeText: String {
         let sh = Int(startHour)
-        let sm = Int((startHour.truncatingRemainder(dividingBy: 1)) * 60)
-        let eh = Int(endHour)
-        let em = Int((endHour.truncatingRemainder(dividingBy: 1)) * 60)
+        let sm = Int(round((startHour.truncatingRemainder(dividingBy: 1)) * 60))
+        let eh = Int(endHour) % 24
+        let em = Int(round((endHour.truncatingRemainder(dividingBy: 1)) * 60)) % 60
         return String(format: "%02d:%02d – %02d:%02d", sh, sm, eh, em)
     }
 
     private var durationText: String {
         let dur = endHour - startHour
-        if dur < 1.0 {
-            return "\(Int(dur * 60))m"
-        } else if dur.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(dur))h"
+        let totalMinutes = Int(round(dur * 60))
+        if totalMinutes < 60 {
+            return "\(max(1, totalMinutes))m"
+        } else if totalMinutes % 60 == 0 {
+            return "\(totalMinutes / 60)h"
         } else {
             return String(format: "%.1fh", dur)
         }
@@ -902,15 +1162,26 @@ struct TimelineEmptySlotView: View {
     let date: Date
     let hour: Int
     let slotHeight: CGFloat
+    let granularity: TimeGranularity
     let targetStatus: ContextStatus
     let targetColor: BarColorTag
     let onQuickTap: () -> Void
+    let onHoldCreate: (Date, Date) -> Void
     let onDragCreate: (Date, Date) -> Void
 
     @State private var isDragging: Bool = false
     @State private var dragOffsetY: CGFloat = 0
     @State private var startHourDouble: Double = 0
     @State private var endHourDouble: Double = 0
+
+    private func makeDate(hourDouble: Double) -> Date {
+        let cal = Calendar.current
+        var comp = cal.dateComponents([.year, .month, .day], from: date)
+        comp.hour = Int(hourDouble) % 24
+        comp.minute = Int(round((hourDouble.truncatingRemainder(dividingBy: 1)) * 60)) % 60
+        comp.second = 0
+        return cal.date(from: comp) ?? date
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -929,9 +1200,9 @@ struct TimelineEmptySlotView: View {
                         .fill(Palette.line.opacity(0.6))
                         .frame(height: 1)
 
-                    Text("Hold & drag to create")
+                    Text("Tap for placeholder • Hold to create (\(granularity.label))")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(Palette.inkMuted.opacity(0.35))
+                        .foregroundStyle(Palette.inkMuted.opacity(0.45))
 
                     Rectangle()
                         .fill(Palette.line.opacity(0.6))
@@ -941,10 +1212,10 @@ struct TimelineEmptySlotView: View {
                 .contentShape(Rectangle())
             }
         }
-        .frame(height: isDragging ? CGFloat(max(0.5, endHourDouble - startHourDouble)) * slotHeight : max(20, slotHeight * 0.45))
+        .frame(height: isDragging ? CGFloat(max(0.016, endHourDouble - startHourDouble)) * slotHeight : max(20, slotHeight * 0.45))
         .contentShape(Rectangle())
         .gesture(
-            LongPressGesture(minimumDuration: 0.2)
+            LongPressGesture(minimumDuration: 0.22)
                 .sequenced(before: DragGesture(coordinateSpace: .local))
                 .onChanged { value in
                     switch value {
@@ -955,13 +1226,15 @@ struct TimelineEmptySlotView: View {
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                                     isDragging = true
                                     startHourDouble = Double(hour)
-                                    endHourDouble = Double(hour) + 1.0
+                                    let defHours = Double(granularity.defaultDurationMinutes) / 60.0
+                                    endHourDouble = Double(hour) + defHours
                                 }
                             }
                             dragOffsetY = drag.translation.height
+                            let stepHours = granularity.snapStepHours
                             let rawHours = dragOffsetY / max(30, slotHeight)
-                            let additional = max(0.5, round(rawHours * 2) / 2)
-                            endHourDouble = Double(hour) + max(0.5, additional)
+                            let snappedAdditional = max(stepHours, round(rawHours / stepHours) * stepHours)
+                            endHourDouble = Double(hour) + snappedAdditional
                         }
                     default:
                         break
@@ -970,22 +1243,25 @@ struct TimelineEmptySlotView: View {
                 .onEnded { value in
                     if isDragging {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        let cal = Calendar.current
-                        var startComp = cal.dateComponents([.year, .month, .day], from: date)
-                        startComp.hour = Int(startHourDouble)
-                        startComp.minute = Int((startHourDouble.truncatingRemainder(dividingBy: 1)) * 60)
-                        let startDate = cal.date(from: startComp) ?? date
-
-                        var endComp = cal.dateComponents([.year, .month, .day], from: date)
-                        endComp.hour = Int(endHourDouble)
-                        endComp.minute = Int((endHourDouble.truncatingRemainder(dividingBy: 1)) * 60)
-                        let endDate = cal.date(from: endComp) ?? startDate.addingTimeInterval(3600)
-
+                        let defHours = Double(granularity.defaultDurationMinutes) / 60.0
+                        let finalEnd = endHourDouble > startHourDouble ? endHourDouble : (Double(hour) + defHours)
+                        let startDate = makeDate(hourDouble: startHourDouble)
+                        let endDate = makeDate(hourDouble: finalEnd)
                         onDragCreate(startDate, endDate)
-
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                             isDragging = false
                             dragOffsetY = 0
+                        }
+                    } else {
+                        switch value {
+                        case .first(true), .second(true, _):
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            let defHours = Double(granularity.defaultDurationMinutes) / 60.0
+                            let startDate = makeDate(hourDouble: Double(hour))
+                            let endDate = makeDate(hourDouble: Double(hour) + defHours)
+                            onHoldCreate(startDate, endDate)
+                        default:
+                            break
                         }
                     }
                 }
@@ -993,6 +1269,7 @@ struct TimelineEmptySlotView: View {
         .highPriorityGesture(
             TapGesture().onEnded {
                 if !isDragging {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onQuickTap()
                 }
             }

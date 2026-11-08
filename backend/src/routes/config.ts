@@ -39,7 +39,7 @@ configRouter.get("/", (c) => {
       privacyPolicy: "https://context.matapandastudio.deno.net/privacy",
       terms: "https://context.matapandastudio.deno.net/terms",
       support: "https://context.matapandastudio.deno.net/support",
-      supportEmail: "support@matapandastudio.com"
+      supportEmail: "info@valdiearsanur.com"
     }
   });
 });

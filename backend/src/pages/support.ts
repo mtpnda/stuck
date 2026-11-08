@@ -196,7 +196,7 @@ export function renderSupportPage(): string {
               Inquiries submitted through this form are sent directly to our developer team and are never routed through third-party advertising or ticketing aggregators.
             </p>
             <div style="font-size: 12.5px; color: var(--text-muted);">
-              Direct Email: <a href="mailto:support@matapandastudio.com" style="color: var(--text-primary); font-weight: 700;">support@matapandastudio.com</a>
+              Direct Email: <a href="mailto:info@valdiearsanur.com" style="color: var(--text-primary); font-weight: 700;">info@valdiearsanur.com</a>
             </div>
           </div>
         </div>

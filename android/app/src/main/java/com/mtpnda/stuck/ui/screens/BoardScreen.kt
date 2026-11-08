@@ -49,21 +49,91 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class TimeGranularity(val label: String, val slotHeightDp: Int) {
-    DAY("Day", 0),
-    SIX_HOURS("6 hrs", 48),
-    THREE_HOURS("3 hrs", 52),
-    ONE_HOUR("1 hr", 56),
-    THIRTY_MINS("30 mins", 84),
-    TEN_MINS("10 mins", 136),
-    ONE_MIN("1 min", 210)
+enum class TimeGranularity(
+    val label: String,
+    val slotHeightDp: Int,
+    val defaultDurationMinutes: Int,
+    val snapStepHours: Double
+) {
+    DAY("Day", 0, 24 * 60, 24.0),
+    SIX_HOURS("6 hrs", 48, 6 * 60, 6.0),
+    THREE_HOURS("3 hrs", 52, 3 * 60, 3.0),
+    ONE_HOUR("1 hr", 56, 60, 1.0),
+    THIRTY_MINS("30 mins", 84, 30, 0.5),
+    TEN_MINS("10 mins", 136, 10, 10.0 / 60.0),
+    ONE_MIN("1 min", 210, 1, 1.0 / 60.0)
+}
+
+data class SchedulePlaceholder(
+    val dayMillis: Long,
+    val hour: Int?,
+    val minute: Int,
+    val durationMinutes: Int,
+    val status: ContextStatus,
+    val colorTag: BarColorTag
+) {
+    fun timeRangeString(): String {
+        return if (hour != null) {
+            val startMin = minute
+            val totalEndMin = hour * 60 + startMin + durationMinutes
+            val endH = (totalEndMin / 60) % 24
+            val endM = totalEndMin % 60
+            String.format("%02d:%02d – %02d:%02d", hour, startMin, endH, endM)
+        } else {
+            "All Day"
+        }
+    }
+
+    fun durationBadge(): String {
+        return if (durationMinutes < 60) {
+            "${durationMinutes}m"
+        } else if (durationMinutes % 60 == 0) {
+            "${durationMinutes / 60}h"
+        } else {
+            String.format("%.1fh", durationMinutes.toDouble() / 60.0)
+        }
+    }
+
+    fun startMillis(): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = dayMillis
+            if (hour != null) {
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            } else {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+        }
+        return cal.timeInMillis
+    }
+
+    fun endMillis(): Long {
+        return if (hour != null) {
+            startMillis() + (durationMinutes * 60_000L)
+        } else {
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = dayMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+            cal.timeInMillis
+        }
+    }
 }
 
 @Composable
 fun BoardScreen(
     repository: ContextRepository,
     onOpenProfile: () -> Unit,
-    onNewContext: (ContextStatus, Long) -> Unit,
+    onNewContext: (ContextStatus, Long, Long?) -> Unit,
     onEditContext: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -72,6 +142,7 @@ fun BoardScreen(
     val limit by repository.limit.collectAsState()
 
     var activeQuickActionItem by remember { mutableStateOf<ContextItem?>(null) }
+    var activePlaceholder by remember { mutableStateOf<SchedulePlaceholder?>(null) }
     var selectedStageFilter by remember { mutableStateOf<ContextStatus?>(null) }
     var quickThoughtText by remember { mutableStateOf("") }
 
@@ -183,7 +254,14 @@ fun BoardScreen(
                         .size(38.dp)
                         .clip(CircleShape)
                         .background(ContextColors.Charcoal)
-                        .clickable { onNewContext(quickCaptureContext.status, quickCaptureContext.scheduledDate) }
+                        .clickable {
+                            val durMillis = currentGranularity.defaultDurationMinutes * 60_000L
+                            onNewContext(
+                                quickCaptureContext.status,
+                                quickCaptureContext.scheduledDate,
+                                quickCaptureContext.scheduledDate + durMillis
+                            )
+                        }
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -384,42 +462,12 @@ fun BoardScreen(
                         contexts = contexts,
                         granularity = currentGranularity,
                         selectedStageFilter = selectedStageFilter,
-                        onAddThought = { targetDate ->
-                            val isFuture = targetDate > todayMillis
-                            val targetStatus = selectedStageFilter ?: if (isFuture) ContextStatus.PLANNED else ContextStatus.ACTIVE
-                            val targetColor = when (targetStatus) {
-                                ContextStatus.ACTIVE -> BarColorTag.BLUE
-                                ContextStatus.PLANNED -> BarColorTag.PURPLE
-                                ContextStatus.PAUSED -> BarColorTag.CHARCOAL
-                                ContextStatus.DONE -> BarColorTag.GREEN
-                                ContextStatus.DROPPED -> BarColorTag.CHARCOAL
-                            }
-                            val id = repository.addContext(
-                                title = "New thought",
-                                startAt = targetDate,
-                                status = targetStatus,
-                                colorTag = targetColor
-                            )
-                            onEditContext(id)
-                        },
-                        onDragCreateThought = { startMillis, endMillis ->
-                            val isFuture = startMillis > todayMillis
-                            val targetStatus = selectedStageFilter ?: if (isFuture) ContextStatus.PLANNED else ContextStatus.ACTIVE
-                            val targetColor = when (targetStatus) {
-                                ContextStatus.ACTIVE -> BarColorTag.BLUE
-                                ContextStatus.PLANNED -> BarColorTag.PURPLE
-                                ContextStatus.PAUSED -> BarColorTag.CHARCOAL
-                                ContextStatus.DONE -> BarColorTag.GREEN
-                                ContextStatus.DROPPED -> BarColorTag.CHARCOAL
-                            }
-                            val id = repository.addContext(
-                                title = "New thought",
-                                startAt = startMillis,
-                                endAt = endMillis,
-                                status = targetStatus,
-                                colorTag = targetColor
-                            )
-                            onEditContext(id)
+                        activePlaceholder = activePlaceholder,
+                        onSetPlaceholder = { activePlaceholder = it },
+                        onClearPlaceholder = { activePlaceholder = null },
+                        onHoldCreateThought = { status, startAt, endAt ->
+                            activePlaceholder = null
+                            onNewContext(status, startAt, endAt)
                         },
                         onRescheduleThought = { id, newStartAt ->
                             repository.rescheduleTime(id, newStartAt)
@@ -867,8 +915,10 @@ private fun VerticalDayCard(
     contexts: List<ContextItem>,
     granularity: TimeGranularity,
     selectedStageFilter: ContextStatus?,
-    onAddThought: (Long) -> Unit,
-    onDragCreateThought: (Long, Long) -> Unit = { _, _ -> },
+    activePlaceholder: SchedulePlaceholder?,
+    onSetPlaceholder: (SchedulePlaceholder) -> Unit,
+    onClearPlaceholder: () -> Unit,
+    onHoldCreateThought: (ContextStatus, Long, Long?) -> Unit,
     onRescheduleThought: (String, Long) -> Unit = { _, _ -> },
     onToggleDone: (String) -> Unit,
     onSelectContext: (ContextItem) -> Unit
@@ -962,7 +1012,36 @@ private fun VerticalDayCard(
                     )
                 }
 
-                if (dayItems.isEmpty()) {
+                val isPlaceholderForThisDay = activePlaceholder?.hour == null &&
+                        activePlaceholder?.let {
+                            val pCal = Calendar.getInstance().apply { timeInMillis = it.dayMillis }
+                            pCal.get(Calendar.YEAR) == dayCal.get(Calendar.YEAR) &&
+                                    pCal.get(Calendar.DAY_OF_YEAR) == dayCal.get(Calendar.DAY_OF_YEAR)
+                        } == true
+
+                if (isPlaceholderForThisDay && activePlaceholder != null) {
+                    PlaceholderBar(
+                        placeholder = activePlaceholder,
+                        granularity = granularity,
+                        onConfirm = {
+                            onHoldCreateThought(
+                                activePlaceholder.status,
+                                activePlaceholder.startMillis(),
+                                activePlaceholder.endMillis()
+                            )
+                        },
+                        onDismiss = { onClearPlaceholder() }
+                    )
+                } else if (dayItems.isEmpty()) {
+                    val isFuture = dayMillis > todayCal.timeInMillis
+                    val defaultStatus = selectedStageFilter ?: if (isFuture) ContextStatus.PLANNED else ContextStatus.ACTIVE
+                    val defaultColor = when (defaultStatus) {
+                        ContextStatus.ACTIVE -> BarColorTag.BLUE
+                        ContextStatus.PLANNED -> BarColorTag.PURPLE
+                        ContextStatus.PAUSED -> BarColorTag.CHARCOAL
+                        ContextStatus.DONE -> BarColorTag.GREEN
+                        ContextStatus.DROPPED -> BarColorTag.CHARCOAL
+                    }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -971,7 +1050,18 @@ private fun VerticalDayCard(
                             .clip(RoundedCornerShape(8.dp))
                             .background(ContextColors.SurfaceRaised.copy(alpha = 0.5f))
                             .border(1.dp, ContextColors.BorderSubtle, RoundedCornerShape(8.dp))
-                            .clickable { onAddThought(dayMillis) }
+                            .clickable {
+                                onSetPlaceholder(
+                                    SchedulePlaceholder(
+                                        dayMillis = dayMillis,
+                                        hour = null,
+                                        minute = 0,
+                                        durationMinutes = 24 * 60,
+                                        status = defaultStatus,
+                                        colorTag = defaultColor
+                                    )
+                                )
+                            }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -984,7 +1074,7 @@ private fun VerticalDayCard(
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
-                                text = "Add thought",
+                                text = "Add thought (Tap for placeholder)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ContextColors.InkMuted.copy(alpha = 0.7f)
                             )
@@ -1061,8 +1151,29 @@ private fun VerticalDayCard(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                if (matchingItems.isEmpty()) {
-                                    val targetStatus = selectedStageFilter ?: ContextStatus.ACTIVE
+                                val isPlaceholderForThisHour = activePlaceholder?.hour == hour &&
+                                        activePlaceholder?.let {
+                                            val pCal = Calendar.getInstance().apply { timeInMillis = it.dayMillis }
+                                            pCal.get(Calendar.YEAR) == dayCal.get(Calendar.YEAR) &&
+                                                    pCal.get(Calendar.DAY_OF_YEAR) == dayCal.get(Calendar.DAY_OF_YEAR)
+                                        } == true
+
+                                if (isPlaceholderForThisHour && activePlaceholder != null) {
+                                    PlaceholderBar(
+                                        placeholder = activePlaceholder,
+                                        granularity = granularity,
+                                        onConfirm = {
+                                            onHoldCreateThought(
+                                                activePlaceholder.status,
+                                                activePlaceholder.startMillis(),
+                                                activePlaceholder.endMillis()
+                                            )
+                                        },
+                                        onDismiss = { onClearPlaceholder() }
+                                    )
+                                } else if (matchingItems.isEmpty()) {
+                                    val isFuture = dayMillis > todayCal.timeInMillis
+                                    val targetStatus = selectedStageFilter ?: if (isFuture) ContextStatus.PLANNED else ContextStatus.ACTIVE
                                     val targetColor = when (targetStatus) {
                                         ContextStatus.ACTIVE -> BarColorTag.BLUE
                                         ContextStatus.PLANNED -> BarColorTag.PURPLE
@@ -1074,21 +1185,27 @@ private fun VerticalDayCard(
                                     TimelineEmptySlot(
                                         dayMillis = dayMillis,
                                         hour = hour,
+                                        granularity = granularity,
                                         slotHeightDp = granularity.slotHeightDp.toFloat(),
                                         targetStatus = targetStatus,
                                         targetColor = targetColor,
                                         onQuickTap = {
-                                            val targetCal = Calendar.getInstance().apply {
-                                                timeInMillis = dayMillis
-                                                set(Calendar.HOUR_OF_DAY, hour)
-                                                set(Calendar.MINUTE, 0)
-                                                set(Calendar.SECOND, 0)
-                                                set(Calendar.MILLISECOND, 0)
-                                            }
-                                            onAddThought(targetCal.timeInMillis)
+                                            onSetPlaceholder(
+                                                SchedulePlaceholder(
+                                                    dayMillis = dayMillis,
+                                                    hour = hour,
+                                                    minute = 0,
+                                                    durationMinutes = granularity.defaultDurationMinutes,
+                                                    status = targetStatus,
+                                                    colorTag = targetColor
+                                                )
+                                            )
+                                        },
+                                        onHoldCreate = { startAt, endAt ->
+                                            onHoldCreateThought(targetStatus, startAt, endAt)
                                         },
                                         onDragCreate = { startAt, endAt ->
-                                            onDragCreateThought(startAt, endAt)
+                                            onHoldCreateThought(targetStatus, startAt, endAt)
                                         }
                                     )
                                 } else {
@@ -1403,6 +1520,98 @@ fun DlsStackedBar(
     }
 }
 
+// MARK: - Draft Placeholder Bar (Tap to Confirm / Hold to Create)
+
+@Composable
+fun PlaceholderBar(
+    placeholder: SchedulePlaceholder,
+    granularity: TimeGranularity,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(38.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF29B6F6).copy(alpha = 0.08f))
+            .border(
+                1.5.dp,
+                Color(0xFF29B6F6).copy(alpha = 0.7f),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable { onConfirm() }
+            .padding(horizontal = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .border(1.5.dp, Color(0xFF29B6F6), CircleShape)
+        )
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Draft Placeholder",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ContextColors.InkPrimary
+                )
+                Text(
+                    text = placeholder.timeRangeString(),
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = Color(0xFF0288D1),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF29B6F6).copy(alpha = 0.18f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                )
+            }
+            Text(
+                text = "Tap to confirm form • Hold to create (${granularity.label})",
+                fontSize = 9.sp,
+                color = ContextColors.InkSecondary
+            )
+        }
+
+        Text(
+            text = "Create",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = ContextColors.OnCharcoal,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(ContextColors.Charcoal)
+                .clickable { onConfirm() }
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(ContextColors.SurfaceRaised)
+                .clickable { onDismiss() }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Dismiss",
+                tint = ContextColors.InkMuted,
+                modifier = Modifier.size(12.dp)
+            )
+        }
+    }
+}
+
 // MARK: - Drag-to-Create Timeline Box (Matches BioCue Spec & Reference Mockup)
 
 @Composable
@@ -1413,19 +1622,20 @@ fun DragCreateBox(
     stageColor: Color = Color(0xFF29B6F6),
     modifier: Modifier = Modifier
 ) {
-    val durationHours = (endHour - startHour).coerceAtLeast(0.5)
+    val durationHours = (endHour - startHour).coerceAtLeast(0.016)
     val totalHeightDp = (durationHours * slotHeightDp).toFloat().coerceAtLeast(36f)
 
     val sh = startHour.toInt()
-    val sm = ((startHour % 1.0) * 60).toInt()
-    val eh = endHour.toInt()
-    val em = ((endHour % 1.0) * 60).toInt()
+    val sm = ((startHour % 1.0) * 60).roundToInt() % 60
+    val eh = endHour.toInt() % 24
+    val em = ((endHour % 1.0) * 60).roundToInt() % 60
     val timeRangeText = String.format("%02d:%02d – %02d:%02d", sh, sm, eh, em)
 
-    val durationText = if (durationHours < 1.0) {
-        "${(durationHours * 60).toInt()}m"
-    } else if (durationHours % 1.0 == 0.0) {
-        "${durationHours.toInt()}h"
+    val totalMinutes = (durationHours * 60).roundToInt()
+    val durationText = if (totalMinutes < 60) {
+        "${maxOf(1, totalMinutes)}m"
+    } else if (totalMinutes % 60 == 0) {
+        "${totalMinutes / 60}h"
     } else {
         String.format("%.1fh", durationHours)
     }
@@ -1509,17 +1719,21 @@ fun DragCreateBox(
 fun TimelineEmptySlot(
     dayMillis: Long,
     hour: Int,
+    granularity: TimeGranularity,
     slotHeightDp: Float,
     targetStatus: ContextStatus,
     targetColor: BarColorTag,
     onQuickTap: () -> Unit,
+    onHoldCreate: (Long, Long) -> Unit,
     onDragCreate: (Long, Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableStateOf(0f) }
     var startHourDouble by remember { mutableStateOf(hour.toDouble()) }
-    var endHourDouble by remember { mutableStateOf(hour.toDouble() + 1.0) }
+    var endHourDouble by remember {
+        mutableStateOf(hour.toDouble() + (granularity.defaultDurationMinutes / 60.0))
+    }
     val density = LocalDensity.current
 
     val effectiveSlotHeight = slotHeightDp.coerceAtLeast(36f)
@@ -1527,12 +1741,13 @@ fun TimelineEmptySlot(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .pointerInput(dayMillis, hour, effectiveSlotHeight) {
+            .pointerInput(dayMillis, hour, effectiveSlotHeight, granularity) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         isDragging = true
                         startHourDouble = hour.toDouble()
-                        endHourDouble = hour.toDouble() + 1.0
+                        val defHours = granularity.defaultDurationMinutes / 60.0
+                        endHourDouble = hour.toDouble() + defHours
                         dragOffsetY = 0f
                     },
                     onDrag = { change, dragAmount ->
@@ -1540,37 +1755,53 @@ fun TimelineEmptySlot(
                         dragOffsetY += dragAmount.y
                         val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
                         val rawHours = (dragOffsetY / slotHeightPx).toDouble()
-                        val additional = ((rawHours * 2.0).roundToInt() / 2.0).coerceAtLeast(0.5)
-                        endHourDouble = (hour.toDouble() + additional).coerceAtLeast(hour.toDouble() + 0.5)
+                        val step = granularity.snapStepHours
+                        val snappedAdditional = (Math.round(rawHours / step) * step).coerceAtLeast(step)
+                        endHourDouble = hour.toDouble() + snappedAdditional
                     },
                     onDragEnd = {
                         if (isDragging) {
-                            val cal = Calendar.getInstance().apply {
-                                timeInMillis = dayMillis
-                                set(Calendar.HOUR_OF_DAY, startHourDouble.toInt())
-                                set(Calendar.MINUTE, ((startHourDouble % 1.0) * 60).toInt())
-                                set(Calendar.SECOND, 0)
-                                set(Calendar.MILLISECOND, 0)
-                            }
-                            val startMillis = cal.timeInMillis
+                            if (dragOffsetY == 0f) {
+                                val cal = Calendar.getInstance().apply {
+                                    timeInMillis = dayMillis
+                                    set(Calendar.HOUR_OF_DAY, hour)
+                                    set(Calendar.MINUTE, 0)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val startMillis = cal.timeInMillis
+                                val endMillis = startMillis + (granularity.defaultDurationMinutes * 60_000L)
+                                onHoldCreate(startMillis, endMillis)
+                            } else {
+                                val cal = Calendar.getInstance().apply {
+                                    timeInMillis = dayMillis
+                                    set(Calendar.HOUR_OF_DAY, startHourDouble.toInt() % 24)
+                                    set(Calendar.MINUTE, ((startHourDouble % 1.0) * 60).roundToInt() % 60)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val startMillis = cal.timeInMillis
 
-                            val endCal = Calendar.getInstance().apply {
-                                timeInMillis = dayMillis
-                                set(Calendar.HOUR_OF_DAY, endHourDouble.toInt())
-                                set(Calendar.MINUTE, ((endHourDouble % 1.0) * 60).toInt())
-                                set(Calendar.SECOND, 0)
-                                set(Calendar.MILLISECOND, 0)
-                            }
-                            val endMillis = endCal.timeInMillis
+                                val endCal = Calendar.getInstance().apply {
+                                    timeInMillis = dayMillis
+                                    set(Calendar.HOUR_OF_DAY, endHourDouble.toInt() % 24)
+                                    set(Calendar.MINUTE, ((endHourDouble % 1.0) * 60).roundToInt() % 60)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val endMillis = endCal.timeInMillis
 
-                            onDragCreate(startMillis, endMillis)
+                                onDragCreate(startMillis, endMillis)
+                            }
                             isDragging = false
                             dragOffsetY = 0f
                         }
                     },
                     onDragCancel = {
-                        isDragging = false
-                        dragOffsetY = 0f
+                        if (isDragging) {
+                            isDragging = false
+                            dragOffsetY = 0f
+                        }
                     }
                 )
             }
@@ -1598,10 +1829,10 @@ fun TimelineEmptySlot(
                         .background(ContextColors.BorderSubtle.copy(alpha = 0.5f))
                 )
                 Text(
-                    text = "Hold & drag to create",
+                    text = "Tap for placeholder • Hold to create (${granularity.label})",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium,
-                    color = ContextColors.InkMuted.copy(alpha = 0.4f)
+                    color = ContextColors.InkMuted.copy(alpha = 0.45f)
                 )
                 Box(
                     modifier = Modifier

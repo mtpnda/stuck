@@ -14,9 +14,9 @@ targets:
     path: "android/app/src/main/play"
 
 links:
-  website: "https://context.matapandastudio.deno.net"
-  privacy_policy: "https://context.matapandastudio.deno.net/privacy"
-  support_email: "support@matapandastudio.com"
+  website: "https://stuck.matapandastudio.deno.net"
+  privacy_policy: "https://stuck.matapandastudio.deno.net/privacy"
+  support_email: "info@valdiearsanur.com"
 
 release:
   version_name: "0.1.0"

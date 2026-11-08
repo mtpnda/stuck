@@ -50,6 +50,27 @@ def save_png(filename, width, height, pixels):
     with open(filename, 'wb') as f:
         f.write(png_data)
 
+def save_png_rgb(filename, width, height, pixels):
+    """Saves a 24-bit RGB PNG without alpha channel (strict requirement for iOS App Icon & App Store)."""
+    os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
+    raw_data = bytearray()
+    for y in range(height):
+        raw_data.append(0) # Filter type 0
+        for x in range(width):
+            p = pixels[y * width + x]
+            raw_data.extend((p[0], p[1], p[2])) # 3 bytes (RGB, no alpha)
+
+    def chunk(chunk_type, data):
+        return struct.pack('>I', len(data)) + chunk_type + data + struct.pack('>I', zlib.crc32(chunk_type + data) & 0xffffffff)
+
+    header = b'\x89PNG\r\n\x1a\n'
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0) # type 2 = RGB (no alpha)
+    idat = zlib.compress(bytes(raw_data), 9)
+    png_data = header + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
+    with open(filename, 'wb') as f:
+        f.write(png_data)
+
+
 def draw_rounded_rect(pixels, w, h, rx, ry, rw, rh, radius, color):
     r_color = color[:3]
     a_color = color[3] if len(color) > 3 else 255
@@ -269,11 +290,11 @@ def resize_image(src, dst, size):
 def main():
     print("🎨 Generating Stuck (com.mtpnda.stuck) BioCue DLS Branding Assets...")
 
-    # 1. Master Icon 1024x1024
+    # 1. Master Icon 1024x1024 (24-bit RGB without alpha channel, strictly compliant with Apple App Store)
     master_icon_path = os.path.join(ROOT_DIR, "assets", "app-icon.png")
     master_pixels = generate_app_icon_1024()
-    save_png(master_icon_path, 1024, 1024, master_pixels)
-    print(f"  ✓ Master Icon: {master_icon_path} (1024x1024)")
+    save_png_rgb(master_icon_path, 1024, 1024, master_pixels)
+    print(f"  ✓ Master Icon: {master_icon_path} (1024x1024, RGB no-alpha)")
 
     # 2. Master Round Icon 1024x1024
     round_icon_path = os.path.join(ROOT_DIR, "assets", "app-icon-round.png")
@@ -327,13 +348,141 @@ def main():
         resize_image(round_icon_path, rd_dst, sz)
     print(f"  ✓ Android Mipmap Launcher & Round Icons (mdpi -> xxxhdpi)")
 
-    # 7. iOS AppIcon Catalog
+    # 7. iOS AppIcon Catalog (Complete device matrix + Universal 1024)
     ios_icon_dir = os.path.join(ROOT_DIR, "ios", "Contexts", "Assets.xcassets", "AppIcon.appiconset")
     os.makedirs(ios_icon_dir, exist_ok=True)
-    resize_image(master_icon_path, os.path.join(ios_icon_dir, "AppIcon-1024.png"), 1024)
-    # Write Contents.json
+
+    ios_sizes = {
+        "AppIcon-1024.png": 1024,
+        "AppIcon-20@2x.png": 40,
+        "AppIcon-20@3x.png": 60,
+        "AppIcon-29@2x.png": 58,
+        "AppIcon-29@3x.png": 87,
+        "AppIcon-40@2x.png": 80,
+        "AppIcon-40@3x.png": 120,
+        "AppIcon-60@2x.png": 120,
+        "AppIcon-60@3x.png": 180,
+        "AppIcon-20@1x.png": 20,
+        "AppIcon-29@1x.png": 29,
+        "AppIcon-40@1x.png": 40,
+        "AppIcon-76@1x.png": 76,
+        "AppIcon-76@2x.png": 152,
+        "AppIcon-83.5@2x.png": 167
+    }
+    for filename, sz in ios_sizes.items():
+        resize_image(master_icon_path, os.path.join(ios_icon_dir, filename), sz)
+
+    # Write Complete Contents.json
     contents_json = """{
   "images" : [
+    {
+      "filename" : "AppIcon-20@2x.png",
+      "idiom" : "iphone",
+      "scale" : "2x",
+      "size" : "20x20"
+    },
+    {
+      "filename" : "AppIcon-20@3x.png",
+      "idiom" : "iphone",
+      "scale" : "3x",
+      "size" : "20x20"
+    },
+    {
+      "filename" : "AppIcon-29@2x.png",
+      "idiom" : "iphone",
+      "scale" : "2x",
+      "size" : "29x29"
+    },
+    {
+      "filename" : "AppIcon-29@3x.png",
+      "idiom" : "iphone",
+      "scale" : "3x",
+      "size" : "29x29"
+    },
+    {
+      "filename" : "AppIcon-40@2x.png",
+      "idiom" : "iphone",
+      "scale" : "2x",
+      "size" : "40x40"
+    },
+    {
+      "filename" : "AppIcon-40@3x.png",
+      "idiom" : "iphone",
+      "scale" : "3x",
+      "size" : "40x40"
+    },
+    {
+      "filename" : "AppIcon-60@2x.png",
+      "idiom" : "iphone",
+      "scale" : "2x",
+      "size" : "60x60"
+    },
+    {
+      "filename" : "AppIcon-60@3x.png",
+      "idiom" : "iphone",
+      "scale" : "3x",
+      "size" : "60x60"
+    },
+    {
+      "filename" : "AppIcon-20@1x.png",
+      "idiom" : "ipad",
+      "scale" : "1x",
+      "size" : "20x20"
+    },
+    {
+      "filename" : "AppIcon-20@2x.png",
+      "idiom" : "ipad",
+      "scale" : "2x",
+      "size" : "20x20"
+    },
+    {
+      "filename" : "AppIcon-29@1x.png",
+      "idiom" : "ipad",
+      "scale" : "1x",
+      "size" : "29x29"
+    },
+    {
+      "filename" : "AppIcon-29@2x.png",
+      "idiom" : "ipad",
+      "scale" : "2x",
+      "size" : "29x29"
+    },
+    {
+      "filename" : "AppIcon-40@1x.png",
+      "idiom" : "ipad",
+      "scale" : "1x",
+      "size" : "40x40"
+    },
+    {
+      "filename" : "AppIcon-40@2x.png",
+      "idiom" : "ipad",
+      "scale" : "2x",
+      "size" : "40x40"
+    },
+    {
+      "filename" : "AppIcon-76@1x.png",
+      "idiom" : "ipad",
+      "scale" : "1x",
+      "size" : "76x76"
+    },
+    {
+      "filename" : "AppIcon-76@2x.png",
+      "idiom" : "ipad",
+      "scale" : "2x",
+      "size" : "76x76"
+    },
+    {
+      "filename" : "AppIcon-83.5@2x.png",
+      "idiom" : "ipad",
+      "scale" : "2x",
+      "size" : "83.5x83.5"
+    },
+    {
+      "filename" : "AppIcon-1024.png",
+      "idiom" : "ios-marketing",
+      "scale" : "1x",
+      "size" : "1024x1024"
+    },
     {
       "filename" : "AppIcon-1024.png",
       "idiom" : "universal",
@@ -349,7 +498,8 @@ def main():
 """
     with open(os.path.join(ios_icon_dir, "Contents.json"), "w") as f:
         f.write(contents_json)
-    print(f"  ✓ iOS Assets.xcassets AppIcon: {ios_icon_dir}")
+    print(f"  ✓ iOS Assets.xcassets AppIcon: {ios_icon_dir} (Full density matrix + 1024x1024)")
+
 
     # 8. Webhost Assets
     webhost_dir = "/Users/valdiearsanur/Workspace/macbook-air-webhost/apps/stuck/assets"
