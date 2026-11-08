@@ -564,4 +564,94 @@ class ContextLogicTest {
         assertEquals(placeholder.startMillis(), confirmedItem.startAt)
         assertEquals(placeholder.endMillis(), confirmedItem.endAt)
     }
+
+    // MARK: - Multi-Day & Duration Expansion Tests
+
+    @Test
+    fun testMultiDayEventIntersectsBothDays() {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val day1Millis = cal.timeInMillis
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        val day2Millis = cal.timeInMillis
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        val day3Millis = cal.timeInMillis
+
+        // Event from Day 1 at 22:00 to Day 2 at 04:00 (6h total duration)
+        val start = day1Millis + (22 * 3600_000L)
+        val end = day2Millis + (4 * 3600_000L)
+
+        val item = ContextItem(
+            id = "overnight-1",
+            title = "Overnight Focus",
+            startAt = start,
+            endAt = end,
+            status = ContextStatus.ACTIVE
+        )
+
+        assertTrue("Event must intersect Day 1", item.intersects(day1Millis))
+        assertTrue("Event must intersect Day 2", item.intersects(day2Millis))
+        assertFalse("Event must NOT intersect Day 3", item.intersects(day3Millis))
+
+        assertFalse("Day 1 is start day, not continuation", item.isContinuation(day1Millis))
+        assertTrue("Day 1 must be flagged outgoing to next day", item.isOutgoing(day1Millis))
+
+        assertTrue("Day 2 must be flagged continuation from yesterday", item.isContinuation(day2Millis))
+        assertFalse("Day 2 is ending day, not outgoing", item.isOutgoing(day2Millis))
+    }
+
+    @Test
+    fun testDurationExpansionAndReschedulePreservation() {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val day1Millis = cal.timeInMillis
+        val start = day1Millis + (16 * 3600_000L) // 16:00
+        val initialEnd = day1Millis + (18 * 3600_000L) // 18:00 (2h)
+
+        val item = ContextItem(
+            id = "proj-1",
+            title = "Design Polish",
+            startAt = start,
+            endAt = initialEnd,
+            status = ContextStatus.ACTIVE
+        )
+
+        // Expand duration across midnight into tomorrow 02:00 (10h duration)
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        val day2Millis = cal.timeInMillis
+        val newEnd = day2Millis + (2 * 3600_000L)
+
+        val expanded = item.copy(endAt = newEnd)
+        assertEquals(newEnd, expanded.endAt)
+        assertTrue(expanded.intersects(day1Millis))
+        assertTrue(expanded.intersects(day2Millis))
+        assertTrue(expanded.isOutgoing(day1Millis))
+        assertTrue(expanded.isContinuation(day2Millis))
+
+        // Reschedule start time forward by 1 hour (17:00), preserving duration (10h)
+        val duration = expanded.endAt!! - expanded.startAt
+        val newStart = day1Millis + (17 * 3600_000L)
+        val rescheduled = expanded.copy(startAt = newStart, endAt = newStart + duration)
+
+        assertEquals(newStart, rescheduled.startAt)
+        assertEquals(newStart + duration, rescheduled.endAt)
+        assertEquals(duration, rescheduled.endAt!! - rescheduled.startAt)
+    }
+
+    @Test
+    fun testTimelineHandleTokensResolveDls() {
+        assertEquals(Color(0xFF29B6F6), DlsTokens.timelineHandleKnob)
+        assertEquals(Color(0xFF1C1814), DlsTokens.timelineHandleKnobBorder)
+        assertEquals(Color(0xFF29B6F6), DlsTokens.timelineSpanningChip)
+        assertEquals(Color(0xFFE1F5FE), DlsTokens.timelineSpanningSoft)
+        assertEquals(Color(0xFF0288D1), DlsTokens.timelineSpanningInk)
+    }
 }

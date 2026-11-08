@@ -31,6 +31,11 @@ object DlsTokens {
     val stateNeutralChip = Color(0xFFD1D5DB)
     val stateNeutralSoft = Color(0xFFEDEEF0)
     val stateNeutralInk = Color(0xFF383C44)
+    val timelineSpanningChip = Color(0xFF29B6F6)
+    val timelineSpanningSoft = Color(0xFFE1F5FE)
+    val timelineSpanningInk = Color(0xFF0288D1)
+    val timelineHandleKnob = Color(0xFF29B6F6)
+    val timelineHandleKnobBorder = Color(0xFF1C1814)
 }
 
 /** Radii, spacing, sizes and motion in dp / ms. */

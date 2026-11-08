@@ -10,6 +10,7 @@
     "coral-300": "#FCA5A5", "coral-100": "#FBE3E1", "coral-700": "#9C2A22",
     "sky-300": "#93C5FD", "sky-100": "#DDEAFB", "sky-700": "#1B4F9C",
     "stone-300": "#D1D5DB", "stone-100": "#EDEEF0", "stone-700": "#383C44",
+    "cyan-400": "#29B6F6", "cyan-100": "#E1F5FE", "cyan-800": "#0288D1",
 
     "hc-white": "#FFFFFF", "hc-grey-100": "#F2F2F2", "hc-grey-700": "#4A4A4A", "hc-grey-800": "#333333", "hc-black": "#000000",
     "hc-sage-soft": "#E3F6EA", "hc-sage-ink": "#14532D", "hc-amber-soft": "#FFF3C4", "hc-amber-ink": "#6B3F00",
@@ -26,7 +27,9 @@
       "state.rising.chip": "{palette.amber-300}", "state.rising.soft": "{palette.amber-100}", "state.rising.ink": "{palette.amber-700}",
       "state.alert.chip": "{palette.coral-300}", "state.alert.soft": "{palette.coral-100}", "state.alert.ink": "{palette.coral-700}",
       "state.info.chip": "{palette.sky-300}", "state.info.soft": "{palette.sky-100}", "state.info.ink": "{palette.sky-700}",
-      "state.neutral.chip": "{palette.stone-300}", "state.neutral.soft": "{palette.stone-100}", "state.neutral.ink": "{palette.stone-700}"
+      "state.neutral.chip": "{palette.stone-300}", "state.neutral.soft": "{palette.stone-100}", "state.neutral.ink": "{palette.stone-700}",
+      "timeline.spanning.chip": "{palette.cyan-400}", "timeline.spanning.soft": "{palette.cyan-100}", "timeline.spanning.ink": "{palette.cyan-800}",
+      "timeline.handle.knob": "{palette.cyan-400}", "timeline.handle.knobBorder": "{palette.char-900}"
     },
     "high-contrast": {
       "surface.bg": "{palette.hc-white}", "surface.card": "{palette.hc-white}", "surface.raised": "{palette.hc-grey-100}",
@@ -37,7 +40,9 @@
       "state.rising.chip": "{palette.amber-300}", "state.rising.soft": "{palette.hc-amber-soft}", "state.rising.ink": "{palette.hc-amber-ink}",
       "state.alert.chip": "{palette.coral-300}", "state.alert.soft": "{palette.hc-coral-soft}", "state.alert.ink": "{palette.hc-coral-ink}",
       "state.info.chip": "{palette.sky-300}", "state.info.soft": "{palette.hc-sky-soft}", "state.info.ink": "{palette.hc-sky-ink}",
-      "state.neutral.chip": "{palette.stone-300}", "state.neutral.soft": "{palette.stone-100}", "state.neutral.ink": "{palette.hc-stone-ink}"
+      "state.neutral.chip": "{palette.stone-300}", "state.neutral.soft": "{palette.stone-100}", "state.neutral.ink": "{palette.hc-stone-ink}",
+      "timeline.spanning.chip": "{palette.cyan-400}", "timeline.spanning.soft": "{palette.hc-sky-soft}", "timeline.spanning.ink": "{palette.hc-sky-ink}",
+      "timeline.handle.knob": "{palette.cyan-400}", "timeline.handle.knobBorder": "{palette.hc-black}"
     }
   },
 

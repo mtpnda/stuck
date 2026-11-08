@@ -128,4 +128,35 @@ struct ContextItem: Identifiable, Codable, Equatable {
     var totalTimeSpent: TimeInterval {
         sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
     }
+
+    // MARK: - Multi-Day & Intersecting Schedule Helpers
+
+    var spansAcrossMidnight: Bool {
+        guard let end = endAt else { return false }
+        let cal = Calendar.current
+        return !cal.isDate(startAt, inSameDayAs: end)
+    }
+
+    func intersects(date: Date) -> Bool {
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        guard let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) else { return false }
+        let itemStart = startAt
+        let itemEnd = endAt ?? itemStart.addingTimeInterval(3600)
+        return itemStart < dayEnd && itemEnd > dayStart
+    }
+
+    func isContinuation(for date: Date) -> Bool {
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        return startAt < dayStart
+    }
+
+    func isOutgoing(for date: Date) -> Bool {
+        guard let end = endAt else { return false }
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        guard let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) else { return false }
+        return end > dayEnd
+    }
 }

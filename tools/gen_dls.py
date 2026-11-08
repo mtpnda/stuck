@@ -71,7 +71,8 @@ def emit_kotlin(data, theme):
         "/** Semantic colours. Components use THESE, never raw hex. */",
         "object DlsTokens {"
     ]
-    for token in REQUIRED_TOKENS:
+    all_tokens = list(REQUIRED_TOKENS) + [t for t in colours.keys() if t not in REQUIRED_TOKENS]
+    for token in all_tokens:
         lines.append(f"    val {camel(token)} = Color({_argb(colours[token])})")
     lines += ["}", "", "/** Radii, spacing, sizes and motion in dp / ms. */", "object DlsScales {"]
     for group, prefix in (("radius", "radius"), ("space", "space"), ("size", "size"), ("motion", "motion")):
@@ -103,7 +104,8 @@ def emit_swift(data, theme):
         "/// Semantic colours. Components use THESE, never raw hex.",
         "enum DlsTokens {"
     ]
-    for token in REQUIRED_TOKENS:
+    all_tokens = list(REQUIRED_TOKENS) + [t for t in colours.keys() if t not in REQUIRED_TOKENS]
+    for token in all_tokens:
         lines.append(f"    static let {camel(token)} = {_swift_colour(colours[token])}")
     lines += ["}", "", "/// Radii, spacing, sizes (pt) and motion (ms).", "enum DlsScales {"]
     for group in ("radius", "space", "size", "motion"):

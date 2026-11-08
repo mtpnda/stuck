@@ -4,7 +4,9 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -469,8 +471,11 @@ fun BoardScreen(
                             activePlaceholder = null
                             onNewContext(status, startAt, endAt)
                         },
-                        onRescheduleThought = { id, newStartAt ->
-                            repository.rescheduleTime(id, newStartAt)
+                        onRescheduleThought = { id, newStartAt, newEndAt ->
+                            repository.rescheduleTime(id, newStartAt, newEndAt)
+                        },
+                        onResizeThought = { id, newEndAt ->
+                            repository.expandDuration(id, newEndAt)
                         },
                         onToggleDone = { id -> repository.toggleDone(id) },
                         onSelectContext = { item -> activeQuickActionItem = item }
@@ -919,7 +924,8 @@ private fun VerticalDayCard(
     onSetPlaceholder: (SchedulePlaceholder) -> Unit,
     onClearPlaceholder: () -> Unit,
     onHoldCreateThought: (ContextStatus, Long, Long?) -> Unit,
-    onRescheduleThought: (String, Long) -> Unit = { _, _ -> },
+    onRescheduleThought: (String, Long, Long?) -> Unit = { _, _, _ -> },
+    onResizeThought: (String, Long) -> Unit = { _, _ -> },
     onToggleDone: (String) -> Unit,
     onSelectContext: (ContextItem) -> Unit
 ) {
@@ -928,11 +934,7 @@ private fun VerticalDayCard(
     val isToday = dayCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
             dayCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
 
-    var dayItems = contexts.filter { c ->
-        val cCal = Calendar.getInstance().apply { timeInMillis = c.startAt }
-        cCal.get(Calendar.YEAR) == dayCal.get(Calendar.YEAR) &&
-                cCal.get(Calendar.DAY_OF_YEAR) == dayCal.get(Calendar.DAY_OF_YEAR)
-    }
+    var dayItems = contexts.filter { c -> c.intersects(dayMillis) }
 
     if (selectedStageFilter != null) {
         dayItems = dayItems.filter { it.status == selectedStageFilter }
@@ -1005,10 +1007,14 @@ private fun VerticalDayCard(
                 regulars.forEach { item ->
                     DlsStackedBar(
                         item = item,
+                        dayMillis = dayMillis,
                         slotHeightDp = 40f,
+                        granularity = granularity,
                         onIconClick = { onToggleDone(item.id) },
                         onBodyClick = { onSelectContext(item) },
-                        onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt) }
+                        onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt, null) },
+                        onResizeDuration = { newEndAt -> onResizeThought(item.id, newEndAt) },
+                        onRescheduleTime = { newStartAt, newEndAt -> onRescheduleThought(item.id, newStartAt, newEndAt) }
                     )
                 }
 
@@ -1016,7 +1022,7 @@ private fun VerticalDayCard(
                         activePlaceholder?.let {
                             val pCal = Calendar.getInstance().apply { timeInMillis = it.dayMillis }
                             pCal.get(Calendar.YEAR) == dayCal.get(Calendar.YEAR) &&
-                                    pCal.get(Calendar.DAY_OF_YEAR) == dayCal.get(Calendar.DAY_OF_YEAR)
+                                     pCal.get(Calendar.DAY_OF_YEAR) == dayCal.get(Calendar.DAY_OF_YEAR)
                         } == true
 
                 if (isPlaceholderForThisDay && activePlaceholder != null) {
@@ -1087,15 +1093,42 @@ private fun VerticalDayCard(
             val hours = when (granularity) {
                 TimeGranularity.DAY -> emptyList()
                 TimeGranularity.SIX_HOURS -> listOf(0, 6, 12, 18)
-                TimeGranularity.THREE_HOURS -> listOf(6, 9, 12, 15, 18, 21)
-                else -> (7..22).toList()
+                TimeGranularity.THREE_HOURS -> listOf(0, 3, 6, 9, 12, 15, 18, 21)
+                else -> {
+                    var minHour = 7
+                    var maxHour = 22
+                    regulars.forEach { item ->
+                        if (item.isContinuation(dayMillis)) {
+                            minHour = 0
+                        } else {
+                            val itemCal = Calendar.getInstance().apply { timeInMillis = item.startAt }
+                            val h = itemCal.get(Calendar.HOUR_OF_DAY)
+                            if (h < minHour) minHour = maxOf(0, h)
+                            if (h > maxHour) maxHour = minOf(23, h)
+                        }
+                        if (item.endAt != null) {
+                            if (item.isOutgoing(dayMillis)) {
+                                maxHour = 23
+                            } else {
+                                val endCal = Calendar.getInstance().apply { timeInMillis = item.endAt }
+                                val eh = endCal.get(Calendar.HOUR_OF_DAY)
+                                if (eh > maxHour) maxHour = minOf(23, eh)
+                            }
+                        }
+                    }
+                    (minHour..maxHour).toList()
+                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 hours.forEach { hour ->
-                    val matchingItems = regulars.filter {
-                        val itemCal = Calendar.getInstance().apply { timeInMillis = it.startAt }
-                        val itemHour = itemCal.get(Calendar.HOUR_OF_DAY)
+                    val matchingItems = regulars.filter { item ->
+                        val itemHour = if (item.isContinuation(dayMillis)) {
+                            0
+                        } else {
+                            val itemCal = Calendar.getInstance().apply { timeInMillis = item.startAt }
+                            itemCal.get(Calendar.HOUR_OF_DAY)
+                        }
                         if (granularity == TimeGranularity.SIX_HOURS) {
                             itemHour in hour until (hour + 6)
                         } else if (granularity == TimeGranularity.THREE_HOURS) {
@@ -1212,10 +1245,14 @@ private fun VerticalDayCard(
                                     matchingItems.forEach { item ->
                                         DlsStackedBar(
                                             item = item,
+                                            dayMillis = dayMillis,
                                             slotHeightDp = granularity.slotHeightDp.toFloat(),
+                                            granularity = granularity,
                                             onIconClick = { onToggleDone(item.id) },
                                             onBodyClick = { onSelectContext(item) },
-                                            onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt) }
+                                            onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt, null) },
+                                            onResizeDuration = { newEndAt -> onResizeThought(item.id, newEndAt) },
+                                            onRescheduleTime = { newStartAt, newEndAt -> onRescheduleThought(item.id, newStartAt, newEndAt) }
                                         )
                                     }
                                 }
@@ -1337,20 +1374,52 @@ private fun StageLegendPill(
 }
 
 @Composable
+fun TimelineHandleKnob(
+    sizeDp: Int = 24,
+    pipDp: Int = 10,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(ContextColors.Charcoal.copy(alpha = 0.88f))
+            .border(1.5.dp, Color(0xFF29B6F6).copy(alpha = 0.75f), CircleShape)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(pipDp.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF29B6F6))
+        )
+    }
+}
+
+@Composable
 fun DlsStackedBar(
     item: ContextItem,
+    dayMillis: Long = 0L,
     slotHeightDp: Float = 56f,
+    granularity: TimeGranularity = TimeGranularity.ONE_HOUR,
     onIconClick: () -> Unit,
     onBodyClick: () -> Unit,
     onReschedule: ((Long) -> Unit)? = null,
+    onResizeDuration: ((Long) -> Unit)? = null,
+    onRescheduleTime: ((Long, Long?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val bg = stageColor(item.status)
     val textCol = stageTextColor(item.status)
     val density = LocalDensity.current
 
-    var isDragging by remember { mutableStateOf(false) }
+    var isDraggingMove by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableStateOf(0f) }
+    var isResizingEnd by remember { mutableStateOf(false) }
+    var resizeOffsetY by remember { mutableStateOf(0f) }
+    var isResizingStart by remember { mutableStateOf(false) }
+    var resizeStartOffsetY by remember { mutableStateOf(0f) }
+    val isResizing = isResizingEnd || isResizingStart
 
     val effectiveSlotHeight = slotHeightDp.coerceAtLeast(36f)
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
@@ -1360,6 +1429,13 @@ fun DlsStackedBar(
         } else null
     }
 
+    val isContinuation = remember(item, dayMillis) {
+        dayMillis > 0L && item.isContinuation(dayMillis)
+    }
+    val isOutgoing = remember(item, dayMillis) {
+        dayMillis > 0L && item.isOutgoing(dayMillis)
+    }
+
     val targetTimePreview = remember(dragOffsetY, item.startAt) {
         val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
         val deltaHours = (dragOffsetY / slotHeightPx).roundToInt()
@@ -1367,7 +1443,48 @@ fun DlsStackedBar(
             timeInMillis = item.startAt
             add(Calendar.HOUR_OF_DAY, deltaHours)
         }
-        timeFormat.format(targetDate.time)
+        val origCal = Calendar.getInstance().apply { timeInMillis = item.startAt }
+        val isSameDay = targetDate.get(Calendar.YEAR) == origCal.get(Calendar.YEAR) &&
+                targetDate.get(Calendar.DAY_OF_YEAR) == origCal.get(Calendar.DAY_OF_YEAR)
+        if (isSameDay) {
+            timeFormat.format(targetDate.time)
+        } else if (targetDate.timeInMillis > origCal.timeInMillis) {
+            "Tomorrow ${timeFormat.format(targetDate.time)}"
+        } else {
+            "Yesterday ${timeFormat.format(targetDate.time)}"
+        }
+    }
+
+    val resizePreview = remember(resizeOffsetY, item.startAt, item.endAt, effectiveSlotHeight) {
+        val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+        val rawHours = ((resizeOffsetY / slotHeightPx) * 2.0).roundToInt() / 2.0
+        val currentDur = if (item.endAt != null) (item.endAt - item.startAt) else (granularity.defaultDurationMinutes * 60_000L)
+        val addedMillis = (rawHours * 3_600_000L).toLong()
+        val totalMillis = maxOf(900_000L, currentDur + addedMillis)
+        val newEnd = item.startAt + totalMillis
+
+        val totalMinutes = (totalMillis / 60_000L).toInt()
+        val durStr = if (totalMinutes < 60) "${totalMinutes}m" else if (totalMinutes % 60 == 0) "${totalMinutes / 60}h" else String.format("%.1fh", totalMinutes / 60.0)
+
+        val startCal = Calendar.getInstance().apply { timeInMillis = item.startAt }
+        val endCal = Calendar.getInstance().apply { timeInMillis = newEnd }
+        val spans = startCal.get(Calendar.YEAR) != endCal.get(Calendar.YEAR) ||
+                startCal.get(Calendar.DAY_OF_YEAR) != endCal.get(Calendar.DAY_OF_YEAR)
+        val endStr = if (spans) "Tomorrow ${timeFormat.format(Date(newEnd))}" else timeFormat.format(Date(newEnd))
+        Triple(durStr, endStr, spans)
+    }
+
+    val resizeStartPreview = remember(resizeStartOffsetY, item.startAt, item.endAt, effectiveSlotHeight) {
+        val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+        val rawHours = ((resizeStartOffsetY / slotHeightPx) * 2.0).roundToInt() / 2.0
+        val endMillis = item.endAt ?: (item.startAt + granularity.defaultDurationMinutes * 60_000L)
+        val addedMillis = (rawHours * 3_600_000L).toLong()
+        val proposedStart = item.startAt + addedMillis
+        val finalStart = minOf(proposedStart, endMillis - 900_000L)
+        val totalMillis = endMillis - finalStart
+        val totalMinutes = (totalMillis / 60_000L).toInt()
+        val durStr = if (totalMinutes < 60) "${totalMinutes}m" else if (totalMinutes % 60 == 0) "${totalMinutes / 60}h" else String.format("%.1fh", totalMinutes / 60.0)
+        Triple(durStr, timeFormat.format(Date(finalStart)), timeFormat.format(Date(endMillis)))
     }
 
     Box(
@@ -1375,7 +1492,7 @@ fun DlsStackedBar(
             .fillMaxWidth()
             .offset { IntOffset(0, dragOffsetY.roundToInt()) }
             .graphicsLayer {
-                if (isDragging) {
+                if (isDraggingMove) {
                     scaleX = 1.03f
                     scaleY = 1.03f
                     shadowElevation = 12.dp.toPx()
@@ -1384,7 +1501,7 @@ fun DlsStackedBar(
             .pointerInput(item.id, effectiveSlotHeight) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
-                        isDragging = true
+                        isDraggingMove = true
                         dragOffsetY = 0f
                     },
                     onDrag = { change, dragAmount ->
@@ -1392,7 +1509,7 @@ fun DlsStackedBar(
                         dragOffsetY += dragAmount.y
                     },
                     onDragEnd = {
-                        if (isDragging) {
+                        if (isDraggingMove) {
                             val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
                             val deltaHours = (dragOffsetY / slotHeightPx).roundToInt()
                             if (deltaHours != 0 && onReschedule != null) {
@@ -1402,12 +1519,12 @@ fun DlsStackedBar(
                                 }
                                 onReschedule(targetDate.timeInMillis)
                             }
-                            isDragging = false
+                            isDraggingMove = false
                             dragOffsetY = 0f
                         }
                     },
                     onDragCancel = {
-                        isDragging = false
+                        isDraggingMove = false
                         dragOffsetY = 0f
                     }
                 )
@@ -1422,7 +1539,7 @@ fun DlsStackedBar(
                 .clip(RoundedCornerShape(8.dp))
                 .background(bg)
                 .clickable {
-                    if (!isDragging) {
+                    if (!isDraggingMove && !isResizing) {
                         onBodyClick()
                     }
                 }
@@ -1458,6 +1575,20 @@ fun DlsStackedBar(
                 }
             }
 
+            // Continuation Badge
+            if (isContinuation) {
+                Text(
+                    text = "↩ Cont.",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF29B6F6))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
+
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.bodySmall,
@@ -1468,6 +1599,20 @@ fun DlsStackedBar(
                 textDecoration = if (item.status == ContextStatus.DONE) TextDecoration.LineThrough else TextDecoration.None,
                 modifier = Modifier.weight(1f)
             )
+
+            // Outgoing Badge
+            if (isOutgoing) {
+                Text(
+                    text = "➜ +1d",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF29B6F6))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
 
             // Duration Time Badge if endAt is set
             if (durationText != null) {
@@ -1484,20 +1629,131 @@ fun DlsStackedBar(
                 )
             }
 
-            // Subtle drag handle grip dots when active/unclosed
+            // Dedicated Move Grip (Zero-delay instant drag)
             if (item.status != ContextStatus.DONE) {
                 Text(
                     text = "⋮⋮",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = textCol.copy(alpha = 0.45f),
-                    modifier = Modifier.padding(end = 2.dp)
+                    color = textCol.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .pointerInput(item.id, effectiveSlotHeight) {
+                            detectDragGestures(
+                                onDragStart = { _: androidx.compose.ui.geometry.Offset ->
+                                    isDraggingMove = true
+                                    dragOffsetY = 0f
+                                },
+                                onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                                    change.consume()
+                                    dragOffsetY += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    if (isDraggingMove) {
+                                        val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+                                        val deltaHours = (dragOffsetY / slotHeightPx).roundToInt()
+                                        if (deltaHours != 0 && onReschedule != null) {
+                                            val targetDate = Calendar.getInstance().apply {
+                                                timeInMillis = item.startAt
+                                                add(Calendar.HOUR_OF_DAY, deltaHours)
+                                            }
+                                            onReschedule(targetDate.timeInMillis)
+                                        }
+                                        isDraggingMove = false
+                                        dragOffsetY = 0f
+                                    }
+                                },
+                                onDragCancel = {
+                                    isDraggingMove = false
+                                    dragOffsetY = 0f
+                                }
+                            )
+                        }
                 )
             }
         }
 
+        // Top-Start Knob (Drag to adjust start time earlier/later)
+        if (item.status != ContextStatus.DONE) {
+            TimelineHandleKnob(
+                sizeDp = 20,
+                pipDp = 8,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = (-8).dp, y = (-8).dp)
+                    .pointerInput(item.id, effectiveSlotHeight) {
+                        detectDragGestures(
+                            onDragStart = { _: androidx.compose.ui.geometry.Offset ->
+                                isResizingStart = true
+                                resizeStartOffsetY = 0f
+                            },
+                            onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                                change.consume()
+                                resizeStartOffsetY += dragAmount.y
+                            },
+                            onDragEnd = {
+                                if (isResizingStart) {
+                                    val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+                                    val rawHours = ((resizeStartOffsetY / slotHeightPx) * 2.0).roundToInt() / 2.0
+                                    val endMillis = item.endAt ?: (item.startAt + granularity.defaultDurationMinutes * 60_000L)
+                                    val addedMillis = (rawHours * 3_600_000L).toLong()
+                                    val proposedStart = item.startAt + addedMillis
+                                    val finalStart = minOf(proposedStart, endMillis - 900_000L)
+                                    onRescheduleTime?.invoke(finalStart, endMillis)
+                                    isResizingStart = false
+                                    resizeStartOffsetY = 0f
+                                }
+                            },
+                            onDragCancel = {
+                                isResizingStart = false
+                                resizeStartOffsetY = 0f
+                            }
+                        )
+                    }
+            )
+        }
+
+        // Expand duration knob on bottom edge (matching user sketch!)
+        if (item.status != ContextStatus.DONE) {
+            TimelineHandleKnob(
+                sizeDp = 20,
+                pipDp = 8,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 8.dp, y = 8.dp)
+                    .pointerInput(item.id, effectiveSlotHeight) {
+                        detectDragGestures(
+                            onDragStart = { _: androidx.compose.ui.geometry.Offset ->
+                                isResizingEnd = true
+                                resizeOffsetY = 0f
+                            },
+                            onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                                change.consume()
+                                resizeOffsetY = maxOf(0f, resizeOffsetY + dragAmount.y)
+                            },
+                            onDragEnd = {
+                                if (isResizingEnd) {
+                                    val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+                                    val rawHours = ((resizeOffsetY / slotHeightPx) * 2.0).roundToInt() / 2.0
+                                    val currentDur = if (item.endAt != null) (item.endAt - item.startAt) else (granularity.defaultDurationMinutes * 60_000L)
+                                    val addedMillis = (rawHours * 3_600_000L).toLong()
+                                    val newEnd = item.startAt + maxOf(900_000L, currentDur + addedMillis)
+                                    onResizeDuration?.invoke(newEnd)
+                                    isResizingEnd = false
+                                    resizeOffsetY = 0f
+                                }
+                            },
+                            onDragCancel = {
+                                isResizingEnd = false
+                                resizeOffsetY = 0f
+                            }
+                        )
+                    }
+            )
+        }
+
         // Floating "Move to HH:mm" pill when dragging
-        if (isDragging) {
+        if (isDraggingMove) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1515,6 +1771,113 @@ fun DlsStackedBar(
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     color = ContextColors.OnCharcoal
                 )
+            }
+        }
+
+        // Expanding Cyan Outline Box (End Adjustment - Matches User Screenshot)
+        if (isResizingEnd) {
+            val totalResizeHeight = 38.dp + with(density) { resizeOffsetY.toDp() }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(totalResizeHeight)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF29B6F6).copy(alpha = 0.08f))
+                    .border(2.dp, Color(0xFF29B6F6), RoundedCornerShape(6.dp))
+            ) {
+                TimelineHandleKnob(
+                    sizeDp = 24,
+                    pipDp = 10,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-12).dp, y = (-12).dp)
+                )
+                TimelineHandleKnob(
+                    sizeDp = 24,
+                    pipDp = 10,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 12.dp, y = 12.dp)
+                )
+                // Readout HUD
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = 28.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(ContextColors.Charcoal)
+                        .padding(horizontal = 9.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Duration: ${resizePreview.first} • Ends ${resizePreview.second}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = ContextColors.OnCharcoal
+                    )
+                    if (resizePreview.third) {
+                        Text(
+                            text = "2 DAYS",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ContextColors.Charcoal,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color(0xFF29B6F6))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Expanding Cyan Outline Box (Start Adjustment - Matches User Screenshot)
+        if (isResizingStart) {
+            val totalStartHeight = maxOf(38.dp, 38.dp - with(density) { resizeStartOffsetY.toDp() })
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(totalStartHeight)
+                    .offset { IntOffset(0, resizeStartOffsetY.roundToInt()) }
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF29B6F6).copy(alpha = 0.08f))
+                    .border(2.dp, Color(0xFF29B6F6), RoundedCornerShape(6.dp))
+            ) {
+                TimelineHandleKnob(
+                    sizeDp = 24,
+                    pipDp = 10,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-12).dp, y = (-12).dp)
+                )
+                TimelineHandleKnob(
+                    sizeDp = 24,
+                    pipDp = 10,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 12.dp, y = 12.dp)
+                )
+                // Readout HUD
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-28).dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(ContextColors.Charcoal)
+                        .padding(horizontal = 9.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Start: ${resizeStartPreview.second} • Ends ${resizeStartPreview.third} (${resizeStartPreview.first})",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = ContextColors.OnCharcoal
+                    )
+                }
             }
         }
     }
@@ -1624,12 +1987,17 @@ fun DragCreateBox(
 ) {
     val durationHours = (endHour - startHour).coerceAtLeast(0.016)
     val totalHeightDp = (durationHours * slotHeightDp).toFloat().coerceAtLeast(36f)
+    val spansTwoDays = endHour >= 24.0
 
-    val sh = startHour.toInt()
+    val sh = startHour.toInt() % 24
     val sm = ((startHour % 1.0) * 60).roundToInt() % 60
     val eh = endHour.toInt() % 24
     val em = ((endHour % 1.0) * 60).roundToInt() % 60
-    val timeRangeText = String.format("%02d:%02d – %02d:%02d", sh, sm, eh, em)
+    val timeRangeText = if (spansTwoDays) {
+        String.format("%02d:%02d – Tomorrow %02d:%02d", sh, sm, eh, em)
+    } else {
+        String.format("%02d:%02d – %02d:%02d", sh, sm, eh, em)
+    }
 
     val totalMinutes = (durationHours * 60).roundToInt()
     val durationText = if (totalMinutes < 60) {
@@ -1645,7 +2013,7 @@ fun DragCreateBox(
             .fillMaxWidth()
             .height(totalHeightDp.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(stageColor.copy(alpha = 0.12f))
+            .background(Color(0xFF29B6F6).copy(alpha = 0.08f))
             .border(2.dp, stageColor, RoundedCornerShape(6.dp))
     ) {
         // Center Readout Pill
@@ -1655,7 +2023,7 @@ fun DragCreateBox(
             modifier = Modifier
                 .align(Alignment.Center)
                 .clip(RoundedCornerShape(999.dp))
-                .background(ContextColors.Charcoal.copy(alpha = 0.85f))
+                .background(ContextColors.Charcoal.copy(alpha = 0.92f))
                 .padding(horizontal = 9.dp, vertical = 3.dp)
         ) {
             Box(
@@ -1671,45 +2039,37 @@ fun DragCreateBox(
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                 color = ContextColors.OnCharcoal
             )
+            if (spansTwoDays) {
+                Text(
+                    text = "2 DAYS",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Black,
+                    color = ContextColors.Charcoal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(stageColor)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+            }
         }
 
-        // Top-Left Circular Knob (Dark Halo + Cyan Pip)
-        Box(
-            contentAlignment = Alignment.Center,
+        // Top-Left Circular Knob (Exactly centered at (0, 0) matching user screenshot)
+        TimelineHandleKnob(
+            sizeDp = 24,
+            pipDp = 10,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = (-1).dp, y = (-1).dp)
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(ContextColors.Charcoal.copy(alpha = 0.9f))
-                .border(1.5.dp, stageColor, CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(stageColor)
-            )
-        }
+                .offset(x = (-12).dp, y = (-12).dp)
+        )
 
-        // Bottom-Right Circular Knob (Dark Halo + Cyan Pip)
-        Box(
-            contentAlignment = Alignment.Center,
+        // Bottom-Right Circular Knob (Exactly centered at (width, height) matching user screenshot)
+        TimelineHandleKnob(
+            sizeDp = 24,
+            pipDp = 10,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .offset(x = 1.dp, y = 1.dp)
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(ContextColors.Charcoal.copy(alpha = 0.9f))
-                .border(1.5.dp, stageColor, CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(stageColor)
-            )
-        }
+                .offset(x = 12.dp, y = 12.dp)
+        )
     }
 }
 
@@ -1741,6 +2101,11 @@ fun TimelineEmptySlot(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .pointerInput(dayMillis, hour) {
+                detectTapGestures(
+                    onTap = { onQuickTap() }
+                )
+            }
             .pointerInput(dayMillis, hour, effectiveSlotHeight, granularity) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -1784,6 +2149,10 @@ fun TimelineEmptySlot(
 
                                 val endCal = Calendar.getInstance().apply {
                                     timeInMillis = dayMillis
+                                    val daysToAdd = (endHourDouble / 24.0).toInt()
+                                    if (daysToAdd > 0) {
+                                        add(Calendar.DAY_OF_YEAR, daysToAdd)
+                                    }
                                     set(Calendar.HOUR_OF_DAY, endHourDouble.toInt() % 24)
                                     set(Calendar.MINUTE, ((endHourDouble % 1.0) * 60).roundToInt() % 60)
                                     set(Calendar.SECOND, 0)

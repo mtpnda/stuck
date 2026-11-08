@@ -273,6 +273,17 @@ class ContextRepository(context: Context) {
         save()
     }
 
+    fun expandDuration(id: String, newEndAt: Long) {
+        _contexts.value = _contexts.value.map { c ->
+            if (c.id == id && newEndAt > c.startAt) {
+                c.copy(endAt = newEndAt)
+            } else {
+                c
+            }
+        }
+        save()
+    }
+
     fun setStatus(id: String, status: ContextStatus) {
         updateContext(id = id, status = status)
     }

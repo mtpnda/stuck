@@ -744,4 +744,86 @@ final class StuckTests: XCTestCase {
         XCTAssertEqual(item?.startAt, placeholder.startDate())
         XCTAssertEqual(item?.endAt, placeholder.endDate())
     }
+
+    // MARK: - Multi-Day & Duration Expansion Tests
+
+    func testMultiDayEventIntersectsBothDays() {
+        store.createProfile(name: "Test User", faceId: false)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        guard let tomorrow = cal.date(byAdding: .day, value: 1, to: today),
+              let dayAfter = cal.date(byAdding: .day, value: 2, to: today) else {
+            XCTFail("Calendar date calculation failed")
+            return
+        }
+
+        // Event from today 22:00 to tomorrow 04:00 (6 hour duration spanning across midnight)
+        let start = today.addingTimeInterval(22 * 3600)
+        let end = tomorrow.addingTimeInterval(4 * 3600)
+
+        let id = store.addContext(
+            title: "Overnight Deep Work",
+            startAt: start,
+            endAt: end,
+            status: .active,
+            colorTag: .blue
+        )
+
+        guard let item = store.contexts.first(where: { $0.id == id }) else {
+            XCTFail("Created item not found in store")
+            return
+        }
+
+        XCTAssertTrue(item.spansAcrossMidnight, "Event from 22:00 to 04:00 must span across midnight")
+        XCTAssertTrue(item.intersects(date: today), "Event must intersect Day 1")
+        XCTAssertTrue(item.intersects(date: tomorrow), "Event must intersect Day 2")
+        XCTAssertFalse(item.intersects(date: dayAfter), "Event must NOT intersect Day 3")
+
+        XCTAssertFalse(item.isContinuation(for: today), "Day 1 is origin day, not continuation")
+        XCTAssertTrue(item.isOutgoing(for: today), "Day 1 must be flagged outgoing to next day")
+
+        XCTAssertTrue(item.isContinuation(for: tomorrow), "Day 2 must be flagged continuation from yesterday")
+        XCTAssertFalse(item.isOutgoing(for: tomorrow), "Day 2 is final day, not outgoing")
+
+        // Store retrieval must return item on both days
+        let todayItems = store.contextsFor(date: today)
+        let tomorrowItems = store.contextsFor(date: tomorrow)
+        XCTAssertTrue(todayItems.contains(where: { $0.id == id }), "Store must return item in contextsFor(today)")
+        XCTAssertTrue(tomorrowItems.contains(where: { $0.id == id }), "Store must return item in contextsFor(tomorrow)")
+    }
+
+    func testDurationExpansionAndRescheduleAcrossDays() {
+        store.createProfile(name: "Test User", faceId: false)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let start = today.addingTimeInterval(16 * 3600) // 16:00
+        let initialEnd = today.addingTimeInterval(18 * 3600) // 18:00 (2h duration)
+
+        let id = store.addContext(
+            title: "Project Review",
+            startAt: start,
+            endAt: initialEnd,
+            status: .active
+        )
+
+        // Expand duration to tomorrow 02:00 (10 hour total duration spanning across midnight)
+        guard let tomorrow = cal.date(byAdding: .day, value: 1, to: today) else { return }
+        let newEnd = tomorrow.addingTimeInterval(2 * 3600)
+
+        store.expandDuration(id: id, newEndAt: newEnd)
+        let expanded = store.contexts.first(where: { $0.id == id })
+        XCTAssertEqual(expanded?.endAt, newEnd)
+        XCTAssertTrue(expanded?.spansAcrossMidnight == true)
+        XCTAssertTrue(expanded?.intersects(date: today) == true)
+        XCTAssertTrue(expanded?.intersects(date: tomorrow) == true)
+
+        // Reschedule start time forward by 1 hour (17:00), duration (10h) must be strictly preserved
+        let newStart = today.addingTimeInterval(17 * 3600)
+        store.rescheduleTime(id: id, newStartAt: newStart)
+
+        let rescheduled = store.contexts.first(where: { $0.id == id })
+        XCTAssertEqual(rescheduled?.startAt, newStart)
+        let expectedEnd = newStart.addingTimeInterval(newEnd.timeIntervalSince(start))
+        XCTAssertEqual(rescheduled?.endAt, expectedEnd, "Rescheduling must preserve expanded duration")
+    }
 }

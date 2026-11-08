@@ -91,9 +91,7 @@ final class ContextStore: ObservableObject {
     // MARK: - Day Filtering
 
     func contextsFor(date: Date) -> [ContextItem] {
-        contexts.filter { item in
-            Calendar.current.isDate(item.startAt, inSameDayAs: date)
-        }
+        contexts.filter { $0.intersects(date: date) }
     }
 
     func loadFor(date: Date) -> Int {
@@ -321,6 +319,15 @@ final class ContextStore: ObservableObject {
             contexts[index].endAt = newStartAt.addingTimeInterval(max(900, duration))
         }
         save()
+    }
+
+    func expandDuration(id: String, newEndAt: Date) {
+        guard let index = contexts.firstIndex(where: { $0.id == id }) else { return }
+        let start = contexts[index].startAt
+        if newEndAt > start {
+            contexts[index].endAt = newEndAt
+            save()
+        }
     }
 
     func setStatus(id: String, status: ContextStatus) {

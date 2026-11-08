@@ -53,4 +53,43 @@ data class ContextItem(
 
     val totalTimeSpent: Long
         get() = totalTimeSpentMillis
+
+    fun intersects(dayMillis: Long): Boolean {
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = dayMillis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStart = cal.timeInMillis
+        val dayEnd = dayStart + 86_400_000L
+        val itemStart = startAt
+        val itemEnd = endAt ?: (itemStart + 3_600_000L)
+        return itemStart < dayEnd && itemEnd > dayStart
+    }
+
+    fun isContinuation(dayMillis: Long): Boolean {
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = dayMillis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return startAt < cal.timeInMillis
+    }
+
+    fun isOutgoing(dayMillis: Long): Boolean {
+        if (endAt == null) return false
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = dayMillis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayEnd = cal.timeInMillis + 86_400_000L
+        return endAt > dayEnd
+    }
 }

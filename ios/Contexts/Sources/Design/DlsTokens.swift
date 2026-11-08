@@ -29,6 +29,11 @@ enum DlsTokens {
     static let stateNeutralChip = Color(.sRGB, red: 209/255.0, green: 213/255.0, blue: 219/255.0, opacity: 1)
     static let stateNeutralSoft = Color(.sRGB, red: 237/255.0, green: 238/255.0, blue: 240/255.0, opacity: 1)
     static let stateNeutralInk = Color(.sRGB, red: 56/255.0, green: 60/255.0, blue: 68/255.0, opacity: 1)
+    static let timelineSpanningChip = Color(.sRGB, red: 41/255.0, green: 182/255.0, blue: 246/255.0, opacity: 1)
+    static let timelineSpanningSoft = Color(.sRGB, red: 225/255.0, green: 245/255.0, blue: 254/255.0, opacity: 1)
+    static let timelineSpanningInk = Color(.sRGB, red: 2/255.0, green: 136/255.0, blue: 209/255.0, opacity: 1)
+    static let timelineHandleKnob = Color(.sRGB, red: 41/255.0, green: 182/255.0, blue: 246/255.0, opacity: 1)
+    static let timelineHandleKnobBorder = Color(.sRGB, red: 28/255.0, green: 24/255.0, blue: 20/255.0, opacity: 1)
 }
 
 /// Radii, spacing, sizes (pt) and motion (ms).
