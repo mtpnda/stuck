@@ -542,7 +542,7 @@ export function renderHomePage(): string {
             <div class="sim-panel">
               <div class="stack-emblem-container">
                 <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #DAD4C8; font-weight: 700;">Emblem Architecture</span>
-                
+
                 <div class="stack-visual">
                   <div class="stack-bar stack-bar-focus" title="Focused Context"></div>
                   <div class="stack-bar stack-bar-active" title="Active Context in Working Memory"></div>
@@ -1084,7 +1084,7 @@ export function renderHomePage(): string {
           }
 
           // Render Active items
-          inHeadList.innerHTML = inHeadItems.map(item => 
+          inHeadList.innerHTML = inHeadItems.map(item =>
             '<div class="thought-item" style="border-left: 3px solid var(--stage-active);">' +
               '<div class="thought-header">' +
                 '<span class="thought-name">' + (item.isFocused ? '⭐️ ' : '') + item.title + '</span>' +
@@ -1100,7 +1100,7 @@ export function renderHomePage(): string {
           ).join('') || '<div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No active thoughts. Headspace is empty.</div>';
 
           // Render Parked items
-          parkedList.innerHTML = parkedItems.map(item => 
+          parkedList.innerHTML = parkedItems.map(item =>
             '<div class="thought-item" style="border-left: 3px solid var(--stage-parked);">' +
               '<div class="thought-header">' +
                 '<span class="thought-name">' + item.title + '</span>' +
@@ -1114,7 +1114,7 @@ export function renderHomePage(): string {
           ).join('') || '<div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No parked thoughts.</div>';
 
           // Render Coming Up items
-          comingList.innerHTML = comingItems.map(item => 
+          comingList.innerHTML = comingItems.map(item =>
             '<div class="thought-item" style="border-left: 3px solid var(--stage-planned);">' +
               '<div class="thought-header">' +
                 '<span class="thought-name">' + item.title + '</span>' +
@@ -1128,7 +1128,7 @@ export function renderHomePage(): string {
           ).join('') || '<div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">Queue empty.</div>';
 
           // Render Closed items
-          closedList.innerHTML = closedItems.map(item => 
+          closedList.innerHTML = closedItems.map(item =>
             '<div class="thought-item" style="border-left: 3px solid var(--stage-done); opacity: 0.85;">' +
               '<div class="thought-header">' +
                 '<span class="thought-name" style="text-decoration: line-through; color: var(--text-muted);">' + item.title + '</span>' +

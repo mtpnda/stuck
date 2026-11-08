@@ -1,7 +1,7 @@
 # Stuck (`com.mtpnda.stuck`) — Agentic Operating & Architecture Guide
-> **Repository:** `Stuck` (Cognitive Load Balancer & Mental Context Flow for iOS & Android)  
-> **Central Agent Plugin:** [/Users/valdiearsanur/.gemini/config/plugins/central-agents/](file:///Users/valdiearsanur/.gemini/config/plugins/central-agents/)  
-> **Release Standard:** [custom-release-manager](file:///Users/valdiearsanur/.gemini/config/plugins/central-agents/skills/custom-release-manager/SKILL.md)  
+> **Repository:** `Stuck` (Cognitive Load Balancer & Mental Context Flow for iOS & Android)
+> **Central Agent Plugin:** [/Users/valdiearsanur/.gemini/config/plugins/central-agents/](file:///Users/valdiearsanur/.gemini/config/plugins/central-agents/)
+> **Release Standard:** [custom-release-manager](file:///Users/valdiearsanur/.gemini/config/plugins/central-agents/skills/custom-release-manager/SKILL.md)
 > **Parent Architecture Parity:** Follows [BioCue](file:///Users/valdiearsanur/Workspace/biocue/) standards.
 
 ---

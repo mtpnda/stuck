@@ -50,5 +50,9 @@ branding:
 screenshots:
 	swift tools/gen_store_screenshots.swift
 
+hygiene:
+	@echo "🛡️ Running Pre-Commit & Gitleaks Security Hygiene..."
+	pre-commit run --all-files
+
 clean:
 	rm -rf build/ ios/build/ android/app/build/ android/.gradle/

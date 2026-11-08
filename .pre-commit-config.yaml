@@ -1,0 +1,39 @@
+# ==============================================================================
+# Stuck (com.mtpnda.stuck) — Security & Commit Hygiene Standard
+# Uses industry-standard Gitleaks + Pre-commit security hooks.
+# ==============================================================================
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  # 1. Gitleaks: Scans staged commits for API keys, private keys, service accounts & certs
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: Gitleaks (Secret & Credential Scanner)
+        entry: gitleaks protect --staged --verbose
+        language: system
+        pass_filenames: false
+
+  # 2. Pre-commit standard open-source core hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+        name: Detect Raw Private Keys
+      - id: check-added-large-files
+        name: Check Large File Threshold (max 2MB)
+        args: ['--maxkb=2048']
+      - id: check-case-conflict
+        name: Check Filename Case Conflicts
+      - id: check-merge-conflict
+        name: Check Unresolved Merge Conflicts
+      - id: check-symlinks
+        name: Check Broken Symlinks
+      - id: end-of-file-fixer
+        name: Ensure Trailing Newline
+        exclude: '\.(png|jpg|jpeg|webp|ico|jks|keystore|jar)$'
+      - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+        exclude: '\.(png|jpg|jpeg|webp|ico|jks|keystore|jar)$'

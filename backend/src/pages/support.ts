@@ -164,7 +164,7 @@ export function renderSupportPage(): string {
         <div style="display: flex; flex-direction: column; gap: 20px;">
           <div class="faq-card">
             <h3 style="font-size: 18px; color: var(--text-primary); margin-bottom: 4px;">Quick Self-Help Guides</h3>
-            
+
             <div class="faq-guide-item">
               <div class="faq-guide-title">How do I calibrate my capacity limit?</div>
               <div class="faq-guide-desc">

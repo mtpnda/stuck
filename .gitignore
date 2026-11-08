@@ -40,5 +40,3 @@ fastlane/screenshots/
 # Local Telegram uploads & foreign runners
 .telegram-uploads/
 artemis-ansible-runner/
-
-

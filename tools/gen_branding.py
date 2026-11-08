@@ -39,7 +39,7 @@ def save_png(filename, width, height, pixels):
         raw_data.append(0) # Filter type 0
         for x in range(width):
             raw_data.extend(pixels[y * width + x])
-    
+
     def chunk(chunk_type, data):
         return struct.pack('>I', len(data)) + chunk_type + data + struct.pack('>I', zlib.crc32(chunk_type + data) & 0xffffffff)
 
@@ -60,13 +60,13 @@ def draw_rounded_rect(pixels, w, h, rx, ry, rw, rh, radius, color):
                 dx = rx + radius - x
             elif x >= rx + rw - radius:
                 dx = x - (rx + rw - radius - 1)
-            
+
             dy = 0
             if y < ry + radius:
                 dy = ry + radius - y
             elif y >= ry + rh - radius:
                 dy = y - (ry + rh - radius - 1)
-            
+
             orig = pixels[y * w + x]
             if dx > 0 and dy > 0:
                 dist = math.sqrt(dx * dx + dy * dy)
@@ -80,7 +80,7 @@ def draw_rounded_rect(pixels, w, h, rx, ry, rw, rh, radius, color):
                     b = int(r_color[2] * alpha + orig[2] * (1.0 - alpha))
                     pixels[y * w + x] = (r, g, b, 255)
                     continue
-            
+
             alpha = a_color / 255.0
             r = int(r_color[0] * alpha + orig[0] * (1.0 - alpha))
             g = int(r_color[1] * alpha + orig[1] * (1.0 - alpha))
@@ -118,17 +118,17 @@ def generate_app_icon_1024():
     W = H = 1024
     # Background: Warm Oat canvas with full bleed
     pixels = [WARM_OAT for _ in range(W * H)]
-    
+
     # Charcoal Container Card (Continuous curvature rounded squircle)
     card_margin = 84
     card_size = W - 2 * card_margin
     card_rad = 220
-    
+
     # Subtle card shadow
     for s in range(16, 0, -2):
         s_alpha = int(8 * (1.0 - s / 16.0))
         draw_rounded_rect(pixels, W, H, card_margin - s//2, card_margin + s, card_size + s, card_size, card_rad + s//2, (0, 0, 0, s_alpha))
-    
+
     # Main Charcoal Card
     draw_rounded_rect(pixels, W, H, card_margin, card_margin, card_size, card_size, card_rad, CHARCOAL)
 
@@ -137,7 +137,7 @@ def generate_app_icon_1024():
     bar_h = 76
     bar_radius = bar_h // 2
     gap = 48
-    
+
     # 4 Stacked Bars (Centered horizontally)
     bars = [
         # (width, color, y_offset)
@@ -146,25 +146,25 @@ def generate_app_icon_1024():
         (480, WARM_OAT,    "Level 3: Parked Thought (Warm Oat)"),
         (260, ALERT_CORAL, "Level 4: Cognitive Limit Indicator (Alert Coral)")
     ]
-    
+
     total_stack_h = len(bars) * bar_h + (len(bars) - 1) * gap
     start_y = (H - total_stack_h) // 2
-    
+
     for i, (bar_w, bar_color, _) in enumerate(bars):
         bar_x = (W - bar_w) // 2
         bar_y = start_y + i * (bar_h + gap)
         draw_rounded_rect(pixels, W, H, bar_x, bar_y, bar_w, bar_h, bar_radius, bar_color)
-    
+
     return pixels
 
 def generate_app_icon_round_1024():
     """Generates 1024x1024 round icon for Android adaptive / round launchers."""
     W = H = 1024
     pixels = [(0, 0, 0, 0) for _ in range(W * H)]
-    
+
     # Draw circular Charcoal base
     draw_circle(pixels, W, H, W // 2, H // 2, 490, CHARCOAL)
-    
+
     bar_h = 76
     bar_radius = bar_h // 2
     gap = 48
@@ -176,12 +176,12 @@ def generate_app_icon_round_1024():
     ]
     total_stack_h = len(bars) * bar_h + (len(bars) - 1) * gap
     start_y = (H - total_stack_h) // 2
-    
+
     for i, (bar_w, bar_color) in enumerate(bars):
         bar_x = (W - bar_w) // 2
         bar_y = start_y + i * (bar_h + gap)
         draw_rounded_rect(pixels, W, H, bar_x, bar_y, bar_w, bar_h, bar_radius, bar_color)
-    
+
     return pixels
 
 def generate_feature_graphic_1024x500():
@@ -189,7 +189,7 @@ def generate_feature_graphic_1024x500():
     W = 1024
     H = 500
     pixels = [WARM_OAT for _ in range(W * H)]
-    
+
     # Decorative subtle background grid/lines
     for x in range(0, W, 80):
         for y in range(H):
@@ -204,11 +204,11 @@ def generate_feature_graphic_1024x500():
     badge_rad = 60
     badge_x = 120
     badge_y = (H - badge_h) // 2
-    
+
     # Badge shadow
     draw_rounded_rect(pixels, W, H, badge_x, badge_y + 12, badge_w, badge_h, badge_rad, (0, 0, 0, 25))
     draw_rounded_rect(pixels, W, H, badge_x, badge_y, badge_w, badge_h, badge_rad, CHARCOAL)
-    
+
     # Inside badge: mini stack of bars
     mb_h = 22
     mb_gap = 14
@@ -225,7 +225,7 @@ def generate_feature_graphic_1024x500():
         mx = badge_x + (badge_w - mw) // 2
         my = mb_start_y + i * (mb_h + mb_gap)
         draw_rounded_rect(pixels, W, H, mx, my, mw, mb_h, mb_rad, mc)
-        
+
     # Right side decorative balance bars
     right_x = 450
     right_y = 140
@@ -245,10 +245,10 @@ def generate_svg():
   </defs>
   <!-- Warm Oat Canvas -->
   <rect width="1024" height="1024" fill="#F2F0EA" />
-  
+
   <!-- BioCue Charcoal Container -->
   <rect x="84" y="84" width="856" height="856" rx="220" fill="#1C1814" filter="url(#softShadow)" />
-  
+
   <!-- Stack of Bars (Cognitive Load Architecture) -->
   <!-- Bar 1: Calm Sage (Focused) -->
   <rect x="322" y="328" width="380" height="76" rx="38" fill="#4A7C59" />
@@ -268,13 +268,13 @@ def resize_image(src, dst, size):
 
 def main():
     print("🎨 Generating Stuck (com.mtpnda.stuck) BioCue DLS Branding Assets...")
-    
+
     # 1. Master Icon 1024x1024
     master_icon_path = os.path.join(ROOT_DIR, "assets", "app-icon.png")
     master_pixels = generate_app_icon_1024()
     save_png(master_icon_path, 1024, 1024, master_pixels)
     print(f"  ✓ Master Icon: {master_icon_path} (1024x1024)")
-    
+
     # 2. Master Round Icon 1024x1024
     round_icon_path = os.path.join(ROOT_DIR, "assets", "app-icon-round.png")
     round_pixels = generate_app_icon_round_1024()

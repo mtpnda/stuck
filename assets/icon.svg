@@ -6,10 +6,10 @@
   </defs>
   <!-- Warm Oat Canvas -->
   <rect width="1024" height="1024" fill="#F2F0EA" />
-  
+
   <!-- BioCue Charcoal Container -->
   <rect x="84" y="84" width="856" height="856" rx="220" fill="#1C1814" filter="url(#softShadow)" />
-  
+
   <!-- Stack of Bars (Cognitive Load Architecture) -->
   <!-- Bar 1: Calm Sage (Focused) -->
   <rect x="322" y="328" width="380" height="76" rx="38" fill="#4A7C59" />

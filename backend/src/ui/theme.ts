@@ -11,11 +11,11 @@ export const GLOBAL_STYLES = `
     --surface-raised: #F7F4EE;
     --border-subtle: #E7E2D9;
     --border-strong: #DAD4C8;
-    
+
     --text-primary: #191612;
     --text-secondary: #3D362C;
     --text-muted: #544B3E;
-    
+
     --action-primary: #1C1814;
     --action-onPrimary: #FBF6EC;
     --shadow-tint: #2B261E;
