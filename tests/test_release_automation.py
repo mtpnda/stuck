@@ -24,10 +24,14 @@ PLAY_DIR = os.path.join(PROJECT_ROOT, "android", "app", "src", "main", "play", "
 def get_effective_fastfile():
     with open(FASTFILE_PATH, "r") as f:
         content = f.read()
-    central_path = os.path.expanduser("~/.gemini/config/plugins/central-agents/skills/reusable-fastlane/Fastfile")
-    if os.path.exists(central_path):
-        with open(central_path, "r") as cf:
-            content += "\n" + cf.read()
+    for candidate in [
+        os.path.expanduser("~/.gemini/config/plugins/central-agents/skills/custom-reusable-fastlane/Fastfile"),
+        os.path.expanduser("~/.gemini/config/plugins/central-agents/skills/reusable-fastlane/Fastfile"),
+    ]:
+        if os.path.exists(candidate):
+            with open(candidate, "r") as cf:
+                content += "\n" + cf.read()
+            break
     return content
 
 def get_effective_makefile():

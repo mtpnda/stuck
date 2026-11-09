@@ -4,14 +4,17 @@
 # ==============================================================================
 opt_out_usage
 
-central_fastfile = File.expand_path("~/.gemini/config/plugins/central-agents/skills/reusable-fastlane/Fastfile")
+central_fastfile = File.expand_path("~/.gemini/config/plugins/central-agents/skills/custom-reusable-fastlane/Fastfile")
+fallback_fastfile = File.expand_path("~/.gemini/config/plugins/central-agents/skills/reusable-fastlane/Fastfile")
 
 if File.exist?(central_fastfile)
   import(central_fastfile)
+elsif File.exist?(fallback_fastfile)
+  import(fallback_fastfile)
 else
   import_from_git(
     url: "git@github.com:mtpnda/central-agents.git",
-    path: "skills/reusable-fastlane/Fastfile"
+    path: "skills/custom-reusable-fastlane/Fastfile"
   )
 end
 

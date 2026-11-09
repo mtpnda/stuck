@@ -131,6 +131,38 @@ data class SchedulePlaceholder(
     }
 }
 
+data class DragCreationState(
+    val dayMillis: Long,
+    val startHour: Double,
+    val endHour: Double
+)
+
+private fun itemStartHourDouble(item: ContextItem, dayMillis: Long): Double {
+    if (item.isContinuation(dayMillis)) return 0.0
+    val cal = Calendar.getInstance().apply { timeInMillis = item.startAt }
+    return cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
+}
+
+private fun itemEndHourDouble(item: ContextItem, dayMillis: Long, defaultMinutes: Int): Double {
+    if (item.isOutgoing(dayMillis)) return 24.0
+    if (item.endAt != null) {
+        val cal = Calendar.getInstance().apply { timeInMillis = item.endAt }
+        return cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
+    }
+    return itemStartHourDouble(item, dayMillis) + defaultMinutes / 60.0
+}
+
+private fun isHourCovered(hour: Int, items: List<ContextItem>, dayMillis: Long, defaultMinutes: Int): Boolean {
+    items.forEach { item ->
+        val start = itemStartHourDouble(item, dayMillis)
+        val end = itemEndHourDouble(item, dayMillis, defaultMinutes)
+        if (hour >= Math.floor(start) && hour < Math.ceil(end)) {
+            return true
+        }
+    }
+    return false
+}
+
 @Composable
 fun BoardScreen(
     repository: ContextRepository,
@@ -1120,70 +1152,99 @@ private fun VerticalDayCard(
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                hours.forEach { hour ->
-                    val matchingItems = regulars.filter { item ->
-                        val itemHour = if (item.isContinuation(dayMillis)) {
-                            0
-                        } else {
-                            val itemCal = Calendar.getInstance().apply { timeInMillis = item.startAt }
-                            itemCal.get(Calendar.HOUR_OF_DAY)
-                        }
-                        if (granularity == TimeGranularity.SIX_HOURS) {
-                            itemHour in hour until (hour + 6)
-                        } else if (granularity == TimeGranularity.THREE_HOURS) {
-                            itemHour in hour until (hour + 3)
-                        } else {
-                            itemHour == hour
-                        }
-                    }
+            var activeDragCreation by remember { mutableStateOf<DragCreationState?>(null) }
+            val slotHeight = granularity.slotHeightDp.toFloat()
+            val minHour = hours.firstOrNull() ?: 7
+            val totalHeightDp = (hours.size * slotHeight).dp
 
-                    Column {
-                        // Live Time Cursor on Today
-                        if (isToday && hour == todayCal.get(Calendar.HOUR_OF_DAY)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF29B6F6))
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(1.5.dp)
-                                        .background(Color(0xFF29B6F6))
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Fixed Time Ruler Column on Left: Never displaced, crossing time accurately
+                Column(
+                    modifier = Modifier.width(44.dp)
+                ) {
+                    hours.forEach { hour ->
+                        Box(
+                            contentAlignment = Alignment.TopEnd,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .defaultMinSize(minHeight = granularity.slotHeightDp.dp)
+                                .height(slotHeight.dp)
                         ) {
-                            // Hour Label
                             Text(
                                 text = String.format("%02d:00", hour),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 color = ContextColors.InkMuted,
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .padding(top = 4.dp)
+                                modifier = Modifier.offset(y = (-7).dp)
                             )
+                        }
+                    }
+                }
 
-                            // Track with guidelines
+                // Right Continuous Schedule Canvas
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(totalHeightDp)
+                ) {
+                    // Layer 1: Hour Grid Slots & Dividers (Fixed slot heights, never displaced)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(totalHeightDp)
+                    ) {
+                        hours.forEach { hour ->
+                            val isOccupied = isHourCovered(hour, regulars, dayMillis, granularity.defaultDurationMinutes)
                             Column(
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(slotHeight.dp)
                             ) {
+                                // Hour divider line
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(ContextColors.BorderSubtle.copy(alpha = 0.35f))
+                                )
+
+                                // Subdivisions for 30 mins, 10 mins, 1 min
+                                if (granularity == TimeGranularity.THIRTY_MINS) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    ) {
+                                        Text(text = ":30", fontSize = 9.sp, color = ContextColors.InkMuted.copy(alpha = 0.5f))
+                                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(ContextColors.BorderSubtle.copy(alpha = 0.35f)))
+                                    }
+                                } else if (granularity == TimeGranularity.TEN_MINS) {
+                                    listOf(10, 20, 30, 40, 50).forEach { m ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            Text(text = ":$m", fontSize = 8.5.sp, color = ContextColors.InkMuted.copy(alpha = 0.4f))
+                                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(ContextColors.BorderSubtle.copy(alpha = 0.25f)))
+                                        }
+                                    }
+                                } else if (granularity == TimeGranularity.ONE_MIN) {
+                                    listOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(top = 1.dp)
+                                        ) {
+                                            Text(text = String.format(":%02d", m), fontSize = 8.sp, color = ContextColors.InkMuted.copy(alpha = 0.35f))
+                                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(ContextColors.BorderSubtle.copy(alpha = 0.2f)))
+                                        }
+                                    }
+                                }
+
                                 val isPlaceholderForThisHour = activePlaceholder?.hour == hour &&
                                         activePlaceholder?.let {
                                             val pCal = Calendar.getInstance().apply { timeInMillis = it.dayMillis }
@@ -1204,7 +1265,7 @@ private fun VerticalDayCard(
                                         },
                                         onDismiss = { onClearPlaceholder() }
                                     )
-                                } else if (matchingItems.isEmpty()) {
+                                } else if (!isOccupied) {
                                     val isFuture = dayMillis > todayCal.timeInMillis
                                     val targetStatus = selectedStageFilter ?: if (isFuture) ContextStatus.PLANNED else ContextStatus.ACTIVE
                                     val targetColor = when (targetStatus) {
@@ -1219,7 +1280,7 @@ private fun VerticalDayCard(
                                         dayMillis = dayMillis,
                                         hour = hour,
                                         granularity = granularity,
-                                        slotHeightDp = granularity.slotHeightDp.toFloat(),
+                                        slotHeightDp = slotHeight,
                                         targetStatus = targetStatus,
                                         targetColor = targetColor,
                                         onQuickTap = {
@@ -1234,90 +1295,78 @@ private fun VerticalDayCard(
                                                 )
                                             )
                                         },
-                                        onHoldCreate = { startAt, endAt ->
-                                            onHoldCreateThought(targetStatus, startAt, endAt)
+                                        onDragCreationChanged = { state ->
+                                            activeDragCreation = state
                                         },
-                                        onDragCreate = { startAt, endAt ->
+                                        onDragCreationEnded = { startAt, endAt ->
+                                            activeDragCreation = null
                                             onHoldCreateThought(targetStatus, startAt, endAt)
                                         }
                                     )
-                                } else {
-                                    matchingItems.forEach { item ->
-                                        DlsStackedBar(
-                                            item = item,
-                                            dayMillis = dayMillis,
-                                            slotHeightDp = granularity.slotHeightDp.toFloat(),
-                                            granularity = granularity,
-                                            onIconClick = { onToggleDone(item.id) },
-                                            onBodyClick = { onSelectContext(item) },
-                                            onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt, null) },
-                                            onResizeDuration = { newEndAt -> onResizeThought(item.id, newEndAt) },
-                                            onRescheduleTime = { newStartAt, newEndAt -> onRescheduleThought(item.id, newStartAt, newEndAt) }
-                                        )
-                                    }
-                                }
-
-                                // 30m, 10m Subdivisions
-                                if (granularity == TimeGranularity.THIRTY_MINS) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.padding(top = 6.dp)
-                                    ) {
-                                        Text(
-                                            text = ":30",
-                                            fontSize = 9.sp,
-                                            color = ContextColors.InkMuted.copy(alpha = 0.5f)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(1.dp)
-                                                .background(ContextColors.BorderSubtle.copy(alpha = 0.35f))
-                                        )
-                                    }
-                                } else if (granularity == TimeGranularity.TEN_MINS) {
-                                    listOf(10, 20, 30, 40, 50).forEach { m ->
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = ":$m",
-                                                fontSize = 8.5.sp,
-                                                color = ContextColors.InkMuted.copy(alpha = 0.4f)
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(ContextColors.BorderSubtle.copy(alpha = 0.25f))
-                                            )
-                                        }
-                                    }
-                                } else if (granularity == TimeGranularity.ONE_MIN) {
-                                    listOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier.padding(top = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = String.format(":%02d", m),
-                                                fontSize = 8.sp,
-                                                color = ContextColors.InkMuted.copy(alpha = 0.35f)
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(0.8.dp)
-                                                    .background(ContextColors.BorderSubtle.copy(alpha = 0.2f))
-                                            )
-                                        }
-                                    }
                                 }
                             }
+                        }
+                    }
+
+                    // Layer 2: Live Time Cursor (Today)
+                    if (isToday) {
+                        val nowH = todayCal.get(Calendar.HOUR_OF_DAY) + todayCal.get(Calendar.MINUTE) / 60.0
+                        if (nowH >= minHour.toDouble() && nowH <= (minHour + hours.size).toDouble()) {
+                            val cursorY = ((nowH - minHour.toDouble()) * slotHeight).toFloat()
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .offset(y = (cursorY - 4).dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF29B6F6)))
+                                Box(modifier = Modifier.weight(1f).height(1.5.dp).background(Color(0xFF29B6F6)))
+                            }
+                        }
+                    }
+
+                    // Layer 3: Placed Items (DlsStackedBar physically spanning duration across hours)
+                    regulars.forEach { item ->
+                        val startH = itemStartHourDouble(item, dayMillis)
+                        val endH = itemEndHourDouble(item, dayMillis, granularity.defaultDurationMinutes)
+                        val topOffsetDp = ((maxOf(0.0, startH - minHour.toDouble())) * slotHeight).toFloat()
+                        val durHours = maxOf(0.25, endH - startH)
+                        val cardHeightDp = maxOf(38f, (durHours * slotHeight - 4).toFloat())
+
+                        DlsStackedBar(
+                            item = item,
+                            dayMillis = dayMillis,
+                            slotHeightDp = slotHeight,
+                            cardHeightDp = cardHeightDp,
+                            granularity = granularity,
+                            onIconClick = { onToggleDone(item.id) },
+                            onBodyClick = { onSelectContext(item) },
+                            onReschedule = { newStartAt -> onRescheduleThought(item.id, newStartAt, null) },
+                            onResizeDuration = { newEndAt -> onResizeThought(item.id, newEndAt) },
+                            onRescheduleTime = { newStartAt, newEndAt -> onRescheduleThought(item.id, newStartAt, newEndAt) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .offset(y = topOffsetDp.dp)
+                        )
+                    }
+
+                    // Layer 4: Drag-to-Create Box Overlay (Physically crosses all covered hours)
+                    activeDragCreation?.let { drag ->
+                        if (drag.dayMillis == dayMillis) {
+                            val topOffsetDp = ((maxOf(0.0, drag.startHour - minHour.toDouble())) * slotHeight).toFloat()
+                            val boxHeightDp = maxOf(24f, ((drag.endHour - drag.startHour) * slotHeight).toFloat())
+
+                            DragCreateBox(
+                                startHour = drag.startHour,
+                                endHour = drag.endHour,
+                                slotHeightDp = slotHeight,
+                                stageColor = Color(0xFF29B6F6),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset(y = topOffsetDp.dp)
+                                    .height(boxHeightDp.dp)
+                            )
                         }
                     }
                 }
@@ -1401,6 +1450,7 @@ fun DlsStackedBar(
     item: ContextItem,
     dayMillis: Long = 0L,
     slotHeightDp: Float = 56f,
+    cardHeightDp: Float = 38f,
     granularity: TimeGranularity = TimeGranularity.ONE_HOUR,
     onIconClick: () -> Unit,
     onBodyClick: () -> Unit,
@@ -1413,6 +1463,7 @@ fun DlsStackedBar(
     val textCol = stageTextColor(item.status)
     val density = LocalDensity.current
 
+    var isHeld by remember { mutableStateOf(false) }
     var isDraggingMove by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableStateOf(0f) }
     var isResizingEnd by remember { mutableStateOf(false) }
@@ -1420,6 +1471,7 @@ fun DlsStackedBar(
     var isResizingStart by remember { mutableStateOf(false) }
     var resizeStartOffsetY by remember { mutableStateOf(0f) }
     val isResizing = isResizingEnd || isResizingStart
+    val isInteracting = isHeld || isDraggingMove || isResizing
 
     val effectiveSlotHeight = slotHeightDp.coerceAtLeast(36f)
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
@@ -1521,6 +1573,7 @@ fun DlsStackedBar(
                             }
                             isDraggingMove = false
                             dragOffsetY = 0f
+                            isHeld = false
                         }
                     },
                     onDragCancel = {
@@ -1530,151 +1583,184 @@ fun DlsStackedBar(
                 )
             }
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Column(
+            verticalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(maxOf(38f, cardHeightDp).dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(bg)
-                .clickable {
-                    if (!isDraggingMove && !isResizing) {
-                        onBodyClick()
+                .border(
+                    width = if (isInteracting) 1.5.dp else 0.dp,
+                    color = if (isInteracting) Color(0xFF29B6F6) else Color.Transparent,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .pointerInput(item.id) {
+                    detectTapGestures(
+                        onTap = {
+                            if (isHeld) {
+                                isHeld = false
+                            } else if (!isDraggingMove && !isResizing) {
+                                onBodyClick()
+                            }
+                        },
+                        onLongPress = {
+                            isHeld = !isHeld
+                        }
+                    )
+                }
+                .padding(horizontal = 8.dp, vertical = if (cardHeightDp > 38f) 6.dp else 0.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+            ) {
+                // Leading Icon Tap Target
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { onIconClick() }
+                ) {
+                    if (item.status == ContextStatus.DONE) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Done",
+                            tint = textCol,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else if (item.status == ContextStatus.PAUSED) {
+                        Text(
+                            text = "⏸",
+                            fontSize = 11.sp,
+                            color = textCol,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .border(1.5.dp, textCol.copy(alpha = 0.8f), CircleShape)
+                        )
                     }
                 }
-                .padding(horizontal = 8.dp)
-        ) {
-            // Leading Icon Tap Target
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable { onIconClick() }
-            ) {
-                if (item.status == ContextStatus.DONE) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Done",
-                        tint = textCol,
-                        modifier = Modifier.size(14.dp)
-                    )
-                } else if (item.status == ContextStatus.PAUSED) {
+
+                // Continuation Badge
+                if (isContinuation) {
                     Text(
-                        text = "⏸",
-                        fontSize = 11.sp,
-                        color = textCol,
-                        fontWeight = FontWeight.Bold
-                    )
-                } else {
-                    Box(
+                        text = "↩ Cont.",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
                         modifier = Modifier
-                            .size(11.dp)
-                            .border(1.5.dp, textCol.copy(alpha = 0.8f), CircleShape)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF29B6F6))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
-            }
 
-            // Continuation Badge
-            if (isContinuation) {
                 Text(
-                    text = "↩ Cont.",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0xFF29B6F6))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                    text = item.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textCol,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textDecoration = if (item.status == ContextStatus.DONE) TextDecoration.LineThrough else TextDecoration.None,
+                    modifier = Modifier.weight(1f)
                 )
-            }
 
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = textCol,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textDecoration = if (item.status == ContextStatus.DONE) TextDecoration.LineThrough else TextDecoration.None,
-                modifier = Modifier.weight(1f)
-            )
+                // Outgoing Badge
+                if (isOutgoing) {
+                    Text(
+                        text = "➜ +1d",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF29B6F6))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
 
-            // Outgoing Badge
-            if (isOutgoing) {
-                Text(
-                    text = "➜ +1d",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0xFF29B6F6))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                )
-            }
+                // Duration Time Badge if endAt is set
+                if (durationText != null) {
+                    Text(
+                        text = durationText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = textCol.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.Black.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
 
-            // Duration Time Badge if endAt is set
-            if (durationText != null) {
-                Text(
-                    text = durationText,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    color = textCol.copy(alpha = 0.85f),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color.Black.copy(alpha = 0.12f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-
-            // Dedicated Move Grip (Zero-delay instant drag)
-            if (item.status != ContextStatus.DONE) {
-                Text(
-                    text = "⋮⋮",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textCol.copy(alpha = 0.5f),
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .pointerInput(item.id, effectiveSlotHeight) {
-                            detectDragGestures(
-                                onDragStart = { _: androidx.compose.ui.geometry.Offset ->
-                                    isDraggingMove = true
-                                    dragOffsetY = 0f
-                                },
-                                onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
-                                    change.consume()
-                                    dragOffsetY += dragAmount.y
-                                },
-                                onDragEnd = {
-                                    if (isDraggingMove) {
-                                        val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
-                                        val deltaHours = (dragOffsetY / slotHeightPx).roundToInt()
-                                        if (deltaHours != 0 && onReschedule != null) {
-                                            val targetDate = Calendar.getInstance().apply {
-                                                timeInMillis = item.startAt
-                                                add(Calendar.HOUR_OF_DAY, deltaHours)
+                // Dedicated Move Grip (Zero-delay instant drag)
+                if (item.status != ContextStatus.DONE) {
+                    Text(
+                        text = "⋮⋮",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textCol.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .pointerInput(item.id, effectiveSlotHeight) {
+                                detectDragGestures(
+                                    onDragStart = { _: androidx.compose.ui.geometry.Offset ->
+                                        isDraggingMove = true
+                                        dragOffsetY = 0f
+                                    },
+                                    onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                                        change.consume()
+                                        dragOffsetY += dragAmount.y
+                                    },
+                                    onDragEnd = {
+                                        if (isDraggingMove) {
+                                            val slotHeightPx = with(density) { effectiveSlotHeight.dp.toPx() }
+                                            val deltaHours = (dragOffsetY / slotHeightPx).roundToInt()
+                                            if (deltaHours != 0 && onReschedule != null) {
+                                                val targetDate = Calendar.getInstance().apply {
+                                                    timeInMillis = item.startAt
+                                                    add(Calendar.HOUR_OF_DAY, deltaHours)
+                                                }
+                                                onReschedule(targetDate.timeInMillis)
                                             }
-                                            onReschedule(targetDate.timeInMillis)
+                                            isDraggingMove = false
+                                            dragOffsetY = 0f
+                                            isHeld = false
                                         }
+                                    },
+                                    onDragCancel = {
                                         isDraggingMove = false
                                         dragOffsetY = 0f
                                     }
-                                },
-                                onDragCancel = {
-                                    isDraggingMove = false
-                                    dragOffsetY = 0f
-                                }
-                            )
-                        }
+                                )
+                            }
+                    )
+                }
+            }
+
+            if (cardHeightDp > 56f && item.notes.isNotBlank()) {
+                Text(
+                    text = item.notes,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = textCol.copy(alpha = 0.75f),
+                    maxLines = maxOf(1, ((cardHeightDp - 44f) / 16f).toInt()),
+                    modifier = Modifier.padding(start = 22.dp)
                 )
             }
         }
 
-        // Top-Start Knob (Drag to adjust start time earlier/later)
-        if (item.status != ContextStatus.DONE) {
+        // Top-Start Knob (Drag to adjust start time earlier/later - ONLY when held / interacting!)
+        if (isInteracting && item.status != ContextStatus.DONE) {
             TimelineHandleKnob(
                 sizeDp = 20,
                 pipDp = 8,
@@ -1702,6 +1788,7 @@ fun DlsStackedBar(
                                     onRescheduleTime?.invoke(finalStart, endMillis)
                                     isResizingStart = false
                                     resizeStartOffsetY = 0f
+                                    isHeld = false
                                 }
                             },
                             onDragCancel = {
@@ -1713,8 +1800,8 @@ fun DlsStackedBar(
             )
         }
 
-        // Expand duration knob on bottom edge (matching user sketch!)
-        if (item.status != ContextStatus.DONE) {
+        // Expand duration knob on bottom edge (ONLY when held / interacting!)
+        if (isInteracting && item.status != ContextStatus.DONE) {
             TimelineHandleKnob(
                 sizeDp = 20,
                 pipDp = 8,
@@ -1741,6 +1828,7 @@ fun DlsStackedBar(
                                     onResizeDuration?.invoke(newEnd)
                                     isResizingEnd = false
                                     resizeOffsetY = 0f
+                                    isHeld = false
                                 }
                             },
                             onDragCancel = {
@@ -2084,8 +2172,8 @@ fun TimelineEmptySlot(
     targetStatus: ContextStatus,
     targetColor: BarColorTag,
     onQuickTap: () -> Unit,
-    onHoldCreate: (Long, Long) -> Unit,
-    onDragCreate: (Long, Long) -> Unit,
+    onDragCreationChanged: (DragCreationState?) -> Unit,
+    onDragCreationEnded: (Long, Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isDragging by remember { mutableStateOf(false) }
@@ -2114,6 +2202,7 @@ fun TimelineEmptySlot(
                         val defHours = granularity.defaultDurationMinutes / 60.0
                         endHourDouble = hour.toDouble() + defHours
                         dragOffsetY = 0f
+                        onDragCreationChanged(DragCreationState(dayMillis, startHourDouble, endHourDouble))
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
@@ -2123,93 +2212,74 @@ fun TimelineEmptySlot(
                         val step = granularity.snapStepHours
                         val snappedAdditional = (Math.round(rawHours / step) * step).coerceAtLeast(step)
                         endHourDouble = hour.toDouble() + snappedAdditional
+                        onDragCreationChanged(DragCreationState(dayMillis, startHourDouble, endHourDouble))
                     },
                     onDragEnd = {
                         if (isDragging) {
-                            if (dragOffsetY == 0f) {
-                                val cal = Calendar.getInstance().apply {
-                                    timeInMillis = dayMillis
-                                    set(Calendar.HOUR_OF_DAY, hour)
-                                    set(Calendar.MINUTE, 0)
-                                    set(Calendar.SECOND, 0)
-                                    set(Calendar.MILLISECOND, 0)
-                                }
-                                val startMillis = cal.timeInMillis
-                                val endMillis = startMillis + (granularity.defaultDurationMinutes * 60_000L)
-                                onHoldCreate(startMillis, endMillis)
-                            } else {
-                                val cal = Calendar.getInstance().apply {
-                                    timeInMillis = dayMillis
-                                    set(Calendar.HOUR_OF_DAY, startHourDouble.toInt() % 24)
-                                    set(Calendar.MINUTE, ((startHourDouble % 1.0) * 60).roundToInt() % 60)
-                                    set(Calendar.SECOND, 0)
-                                    set(Calendar.MILLISECOND, 0)
-                                }
-                                val startMillis = cal.timeInMillis
-
-                                val endCal = Calendar.getInstance().apply {
-                                    timeInMillis = dayMillis
-                                    val daysToAdd = (endHourDouble / 24.0).toInt()
-                                    if (daysToAdd > 0) {
-                                        add(Calendar.DAY_OF_YEAR, daysToAdd)
-                                    }
-                                    set(Calendar.HOUR_OF_DAY, endHourDouble.toInt() % 24)
-                                    set(Calendar.MINUTE, ((endHourDouble % 1.0) * 60).roundToInt() % 60)
-                                    set(Calendar.SECOND, 0)
-                                    set(Calendar.MILLISECOND, 0)
-                                }
-                                val endMillis = endCal.timeInMillis
-
-                                onDragCreate(startMillis, endMillis)
+                            val cal = Calendar.getInstance().apply {
+                                timeInMillis = dayMillis
+                                set(Calendar.HOUR_OF_DAY, startHourDouble.toInt() % 24)
+                                set(Calendar.MINUTE, ((startHourDouble % 1.0) * 60).roundToInt() % 60)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
                             }
+                            val startMillis = cal.timeInMillis
+
+                            val endCal = Calendar.getInstance().apply {
+                                timeInMillis = dayMillis
+                                val daysToAdd = (endHourDouble / 24.0).toInt()
+                                if (daysToAdd > 0) {
+                                    add(Calendar.DAY_OF_YEAR, daysToAdd)
+                                }
+                                set(Calendar.HOUR_OF_DAY, endHourDouble.toInt() % 24)
+                                set(Calendar.MINUTE, ((endHourDouble % 1.0) * 60).roundToInt() % 60)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }
+                            val endMillis = endCal.timeInMillis
+
+                            onDragCreationEnded(startMillis, endMillis)
                             isDragging = false
                             dragOffsetY = 0f
+                            onDragCreationChanged(null)
                         }
                     },
                     onDragCancel = {
                         if (isDragging) {
                             isDragging = false
                             dragOffsetY = 0f
+                            onDragCreationChanged(null)
                         }
                     }
                 )
             }
     ) {
-        if (isDragging) {
-            DragCreateBox(
-                startHour = startHourDouble,
-                endHour = endHourDouble,
-                slotHeightDp = effectiveSlotHeight,
-                stageColor = Color(0xFF29B6F6)
-            )
-        } else {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(maxOf(24f, effectiveSlotHeight * 0.45f).dp)
+                .clickable { onQuickTap() }
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(maxOf(24f, effectiveSlotHeight * 0.45f).dp)
-                    .clickable { onQuickTap() }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(1.dp)
-                        .background(ContextColors.BorderSubtle.copy(alpha = 0.5f))
-                )
-                Text(
-                    text = "Tap for placeholder • Hold to create (${granularity.label})",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = ContextColors.InkMuted.copy(alpha = 0.45f)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(1.dp)
-                        .background(ContextColors.BorderSubtle.copy(alpha = 0.5f))
-                )
-            }
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(ContextColors.BorderSubtle.copy(alpha = 0.5f))
+            )
+            Text(
+                text = "Tap for placeholder • Hold to create (${granularity.label})",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                color = ContextColors.InkMuted.copy(alpha = 0.45f)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(ContextColors.BorderSubtle.copy(alpha = 0.5f))
+            )
         }
     }
 }

@@ -116,6 +116,12 @@ struct SchedulePlaceholder: Equatable {
     }
 }
 
+struct DragCreationState: Equatable {
+    var date: Date
+    var startHour: Double
+    var endHour: Double
+}
+
 struct BoardView: View {
     @ObservedObject var store: ContextStore
     @State private var activeQuickActionItem: ContextItem? = nil
@@ -126,6 +132,7 @@ struct BoardView: View {
     @State private var quickThoughtText: String = ""
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
     @State private var activePlaceholder: SchedulePlaceholder? = nil
+    @State private var activeDragCreation: DragCreationState? = nil
     @State private var newThoughtConfig: (status: ContextStatus, startDate: Date, endDate: Date?, title: String, isBanner: Bool)? = nil
 
     private func openCreateForm(status: ContextStatus, startDate: Date, endDate: Date?, title: String = "", isBanner: Bool = false) {
@@ -607,52 +614,75 @@ struct BoardView: View {
         let cal = Calendar.current
         let hours = hoursForGranularity(for: date, items: items)
         let slotHeight = currentGranularity.slotHeight
+        let minHour = hours.first ?? 7
+        let totalHeight = CGFloat(hours.count) * slotHeight
 
-        return VStack(spacing: 0) {
-            ForEach(hours, id: \.self) { hour in
-                let matchingItems = items.filter { item in
-                    let itemHour: Int
-                    if item.isContinuation(for: date) {
-                        itemHour = 0
-                    } else {
-                        itemHour = cal.component(.hour, from: item.startAt)
-                    }
-                    if currentGranularity == .sixHours {
-                        return itemHour >= hour && itemHour < hour + 6
-                    } else if currentGranularity == .threeHours {
-                        return itemHour >= hour && itemHour < hour + 3
-                    } else {
-                        return itemHour == hour
-                    }
-                }
-
-                VStack(spacing: 0) {
-                    // Live Time Cursor Line on Today
-                    if isToday && hour == cal.component(.hour, from: Date()) {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color(hex: "29B6F6"))
-                                .frame(width: 6, height: 6)
-                            Rectangle()
-                                .fill(Color(hex: "29B6F6"))
-                                .frame(height: 1.5)
-                            Text(currentLiveTimeString())
-                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                .foregroundStyle(Color(hex: "29B6F6"))
-                        }
-                        .padding(.vertical, 2)
-                    }
-
-                    HStack(alignment: .top, spacing: 10) {
-                        // Time Marker Label
+        return HStack(alignment: .top, spacing: 8) {
+            // Fixed Time Ruler Column on Left: Never displaced by events, accurate continuous ruler
+            VStack(spacing: 0) {
+                ForEach(hours, id: \.self) { hour in
+                    HStack {
+                        Spacer()
                         Text(formatHourLabel(hour))
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Palette.inkMuted)
-                            .frame(width: 44, alignment: .trailing)
-                            .padding(.top, 4)
+                    }
+                    .frame(height: slotHeight, alignment: .top)
+                    .offset(y: -7)
+                }
+            }
+            .frame(width: 44)
 
-                        // Slot Area with Guidelines
-                        VStack(alignment: .leading, spacing: 4) {
+            // Right Continuous Schedule Canvas
+            ZStack(alignment: .topLeading) {
+                // Layer 1: Hour Grid Slots & Dividers (Fixed slot heights, never displaced)
+                VStack(spacing: 0) {
+                    ForEach(hours, id: \.self) { hour in
+                        let isOccupied = isHourCovered(hour: hour, items: items, date: date)
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Hour divider line
+                            Rectangle()
+                                .fill(Palette.line.opacity(0.35))
+                                .frame(height: 1)
+
+                            // Subdivisions for 30 mins, 10 mins, 1 min
+                            if currentGranularity == .thirtyMins {
+                                HStack {
+                                    Text(":30")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(Palette.inkMuted.opacity(0.5))
+                                    Rectangle()
+                                        .fill(Palette.line.opacity(0.35))
+                                        .frame(height: 1)
+                                }
+                                .padding(.top, 6)
+                            } else if currentGranularity == .tenMins {
+                                ForEach([10, 20, 30, 40, 50], id: \.self) { m in
+                                    HStack {
+                                        Text(":\(m)")
+                                            .font(.system(size: 8.5, design: .monospaced))
+                                            .foregroundStyle(Palette.inkMuted.opacity(0.4))
+                                        Rectangle()
+                                            .fill(Palette.line.opacity(0.25))
+                                            .frame(height: 1)
+                                    }
+                                    .padding(.top, 2)
+                                }
+                            } else if currentGranularity == .oneMin {
+                                ForEach([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], id: \.self) { m in
+                                    HStack {
+                                        Text(String(format: ":%02d", m))
+                                            .font(.system(size: 8, design: .monospaced))
+                                            .foregroundStyle(Palette.inkMuted.opacity(0.35))
+                                        Rectangle()
+                                            .fill(Palette.line.opacity(0.2))
+                                            .frame(height: 0.8)
+                                    }
+                                    .padding(.top, 1)
+                                }
+                            }
+
                             if let placeholder = activePlaceholder,
                                placeholder.hour == hour,
                                cal.isDate(placeholder.date, inSameDayAs: date) {
@@ -679,7 +709,7 @@ struct BoardView: View {
                                         activePlaceholder = nil
                                     }
                                 )
-                            } else if matchingItems.isEmpty {
+                            } else if !isOccupied {
                                 let isFuture = cal.startOfDay(for: date) > cal.startOfDay(for: Date())
                                 let targetStatus = selectedStageFilter ?? (isFuture ? ContextStatus.planned : ContextStatus.active)
                                 let targetColor: BarColorTag = (targetStatus == .planned) ? .purple : (targetStatus == .paused ? .charcoal : (targetStatus == .done ? .green : .blue))
@@ -687,7 +717,7 @@ struct BoardView: View {
                                 TimelineEmptySlotView(
                                     date: date,
                                     hour: hour,
-                                    slotHeight: max(40, slotHeight),
+                                    slotHeight: slotHeight,
                                     granularity: currentGranularity,
                                     targetStatus: targetStatus,
                                     targetColor: targetColor,
@@ -701,15 +731,11 @@ struct BoardView: View {
                                             colorTag: targetColor
                                         )
                                     },
-                                    onHoldCreate: { startDate, endDate in
-                                        openCreateForm(
-                                            status: targetStatus,
-                                            startDate: startDate,
-                                            endDate: endDate,
-                                            title: "Thought at \(formatHourLabel(hour))"
-                                        )
+                                    onDragCreationChanged: { state in
+                                        activeDragCreation = state
                                     },
-                                    onDragCreate: { startDate, endDate in
+                                    onDragCreationEnded: { startDate, endDate in
+                                        activeDragCreation = nil
                                         openCreateForm(
                                             status: targetStatus,
                                             startDate: startDate,
@@ -719,75 +745,125 @@ struct BoardView: View {
                                     }
                                 )
                             } else {
-                                ForEach(matchingItems) { item in
-                                    DlsStackedBar(
-                                        item: item,
-                                        currentDate: date,
-                                        slotHeight: max(40, slotHeight),
-                                        granularity: currentGranularity,
-                                        onIconTap: {
-                                            store.toggleDone(id: item.id)
-                                        },
-                                        onBodyTap: {
-                                            activeQuickActionItem = item
-                                        },
-                                        onReschedule: { newDate in
-                                            store.rescheduleTime(id: item.id, newStartAt: newDate)
-                                        },
-                                        onResizeDuration: { newEndDate in
-                                            store.expandDuration(id: item.id, newEndAt: newEndDate)
-                                        },
-                                        onRescheduleTime: { newStart, newEnd in
-                                            store.rescheduleTime(id: item.id, newStartAt: newStart, newEndAt: newEnd)
-                                        }
-                                    )
-                                }
-                            }
-
-                            // Subdivisions for 30 mins, 10 mins, 1 min
-                            if currentGranularity == .thirtyMins {
-                                HStack {
-                                    Text(":30")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundStyle(Palette.inkMuted.opacity(0.5))
-                                    Rectangle()
-                                        .fill(Palette.line.opacity(0.35))
-                                        .frame(height: 1)
-                                }
-                                .padding(.top, 6)
-                            } else if currentGranularity == .tenMins {
-                                ForEach([10, 20, 30, 40, 50], id: \.self) { m in
-                                    HStack {
-                                        Text(":\(m)")
-                                            .font(.system(size: 8.5, design: .monospaced))
-                                            .foregroundStyle(Palette.inkMuted.opacity(0.4))
-                                        Rectangle()
-                                            .fill(Palette.line.opacity(0.25))
-                                            .frame(height: 1)
-                                    }
-                                    .padding(.top, 2)
-                                }
-                            } else if currentGranularity == .oneMin {
-                                // 1 Min Precision View: Minute ruler lines & detail badges
-                                ForEach([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], id: \.self) { m in
-                                    HStack {
-                                        Text(String(format: ":%02d", m))
-                                            .font(.system(size: 8, design: .monospaced))
-                                            .foregroundStyle(Palette.inkMuted.opacity(0.35))
-                                        Rectangle()
-                                            .fill(Palette.line.opacity(0.2))
-                                            .frame(height: 0.8)
-                                    }
-                                    .padding(.top, 1)
-                                }
+                                Spacer(minLength: 0)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(minHeight: slotHeight)
+                        .frame(height: slotHeight, alignment: .top)
                     }
                 }
+                .frame(height: totalHeight)
+
+                // Layer 2: Live Time Cursor (Today)
+                if isToday {
+                    let nowH = Double(cal.component(.hour, from: Date())) + Double(cal.component(.minute, from: Date())) / 60.0
+                    let minHDouble = Double(minHour)
+                    let maxHDouble = Double(minHour + hours.count)
+                    if nowH >= minHDouble && nowH <= maxHDouble {
+                        let cursorY = CGFloat(nowH - minHDouble) * slotHeight
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(hex: "29B6F6"))
+                                .frame(width: 6, height: 6)
+                            Rectangle()
+                                .fill(Color(hex: "29B6F6"))
+                                .frame(height: 1.5)
+                            Text(currentLiveTimeString())
+                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color(hex: "29B6F6"))
+                        }
+                        .offset(y: cursorY - 4)
+                        .zIndex(20)
+                    }
+                }
+
+                // Layer 3: Placed Items (DlsStackedBar physically spanning duration across hours)
+                ForEach(items) { item in
+                    let startH = itemStartHourDouble(item, date: date)
+                    let endH = itemEndHourDouble(item, date: date)
+                    let topOffset = CGFloat(max(0, startH - Double(minHour))) * slotHeight
+                    let durHours = max(0.25, endH - startH)
+                    let cardHeight = max(38, CGFloat(durHours) * slotHeight - 4)
+
+                    DlsStackedBar(
+                        item: item,
+                        currentDate: date,
+                        slotHeight: slotHeight,
+                        cardHeight: cardHeight,
+                        granularity: currentGranularity,
+                        onIconTap: {
+                            store.toggleDone(id: item.id)
+                        },
+                        onBodyTap: {
+                            activeQuickActionItem = item
+                        },
+                        onReschedule: { newDate in
+                            store.rescheduleTime(id: item.id, newStartAt: newDate)
+                        },
+                        onResizeDuration: { newEndDate in
+                            store.expandDuration(id: item.id, newEndAt: newEndDate)
+                        },
+                        onRescheduleTime: { newStart, newEnd in
+                            store.rescheduleTime(id: item.id, newStartAt: newStart, newEndAt: newEnd)
+                        }
+                    )
+                    .frame(maxWidth: .infinity)
+                    .offset(y: topOffset)
+                    .zIndex(10)
+                }
+
+                // Layer 4: Drag-to-Create Box Overlay (Physically crosses all covered hours)
+                if let drag = activeDragCreation, cal.isDate(drag.date, inSameDayAs: date) {
+                    let topOffset = CGFloat(max(0, drag.startHour - Double(minHour))) * slotHeight
+                    let boxHeight = max(24, CGFloat(drag.endHour - drag.startHour) * slotHeight)
+
+                    DragCreateBoxView(
+                        startHour: drag.startHour,
+                        endHour: drag.endHour,
+                        slotHeight: slotHeight,
+                        stageColor: DlsTokens.timelineSpanningChip
+                    )
+                    .frame(height: boxHeight)
+                    .offset(y: topOffset)
+                    .zIndex(50)
+                }
+            }
+            .frame(height: totalHeight)
+        }
+    }
+
+    private func itemStartHourDouble(_ item: ContextItem, date: Date) -> Double {
+        let cal = Calendar.current
+        if item.isContinuation(for: date) {
+            return 0.0
+        }
+        let h = cal.component(.hour, from: item.startAt)
+        let m = cal.component(.minute, from: item.startAt)
+        return Double(h) + Double(m) / 60.0
+    }
+
+    private func itemEndHourDouble(_ item: ContextItem, date: Date) -> Double {
+        let cal = Calendar.current
+        if item.isOutgoing(for: date) {
+            return 24.0
+        }
+        if let end = item.endAt, cal.isDate(end, inSameDayAs: date) {
+            let h = cal.component(.hour, from: end)
+            let m = cal.component(.minute, from: end)
+            return Double(h) + Double(m) / 60.0
+        }
+        let start = itemStartHourDouble(item, date: date)
+        return start + Double(currentGranularity.defaultDurationMinutes) / 60.0
+    }
+
+    private func isHourCovered(hour: Int, items: [ContextItem], date: Date) -> Bool {
+        for item in items {
+            let start = itemStartHourDouble(item, date: date)
+            let end = itemEndHourDouble(item, date: date)
+            if Double(hour) >= floor(start) && Double(hour) < ceil(end) {
+                return true
             }
         }
+        return false
     }
 
     private func hoursForGranularity(for date: Date, items: [ContextItem]) -> [Int] {
@@ -818,6 +894,12 @@ struct BoardView: View {
                         if eh > maxHour { maxHour = min(23, eh) }
                     }
                 }
+            }
+            if let drag = activeDragCreation, cal.isDate(drag.date, inSameDayAs: date) {
+                let sh = Int(floor(drag.startHour))
+                let eh = Int(ceil(drag.endHour))
+                if sh < minHour { minHour = max(0, sh) }
+                if eh > maxHour { maxHour = min(23, eh) }
             }
             return Array(minHour...maxHour)
         }
@@ -1227,11 +1309,10 @@ struct TimelineEmptySlotView: View {
     let targetStatus: ContextStatus
     let targetColor: BarColorTag
     let onQuickTap: () -> Void
-    let onHoldCreate: (Date, Date) -> Void
-    let onDragCreate: (Date, Date) -> Void
+    let onDragCreationChanged: (DragCreationState?) -> Void
+    let onDragCreationEnded: (Date, Date) -> Void
 
-    @State private var isDragging: Bool = false
-    @State private var dragOffsetY: CGFloat = 0
+    @State private var isHolding: Bool = false
     @State private var startHourDouble: Double = 0
     @State private var endHourDouble: Double = 0
 
@@ -1251,82 +1332,66 @@ struct TimelineEmptySlotView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if isDragging {
-                DragCreateBoxView(
-                    startHour: startHourDouble,
-                    endHour: endHourDouble,
-                    slotHeight: slotHeight,
-                    stageColor: DlsTokens.timelineSpanningChip
-                )
-                .zIndex(50)
-            } else {
-                // Calm dashed guideline with subtle hint
-                HStack(spacing: 8) {
-                    Rectangle()
-                        .fill(Palette.line.opacity(0.6))
-                        .frame(height: 1)
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(Palette.line.opacity(0.6))
+                .frame(height: 1)
 
-                    Text("Tap for placeholder • Drag or hold to create (\(granularity.label))")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(Palette.inkMuted.opacity(0.45))
+            Text("Tap for placeholder • Hold to create (\(granularity.label))")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(Palette.inkMuted.opacity(0.45))
 
-                    Rectangle()
-                        .fill(Palette.line.opacity(0.6))
-                        .frame(height: 1)
-                }
-                .frame(height: max(20, slotHeight * 0.45))
-                .contentShape(Rectangle())
-            }
+            Rectangle()
+                .fill(Palette.line.opacity(0.6))
+                .frame(height: 1)
         }
-        .frame(height: isDragging ? CGFloat(max(0.016, endHourDouble - startHourDouble)) * slotHeight : max(20, slotHeight * 0.45))
+        .frame(height: max(20, slotHeight * 0.45))
         .contentShape(Rectangle())
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onQuickTap()
+        }
         .gesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            LongPressGesture(minimumDuration: 0.25)
+                .sequenced(before: DragGesture(coordinateSpace: .local))
                 .onChanged { value in
-                    let dy = value.translation.height
-                    if dy > 5 {
-                        if !isDragging {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            isDragging = true
-                            startHourDouble = Double(hour)
-                            let defHours = Double(granularity.defaultDurationMinutes) / 60.0
-                            endHourDouble = Double(hour) + defHours
+                    switch value {
+                    case .second(true, let drag):
+                        if let drag = drag {
+                            if !isHolding {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                isHolding = true
+                                startHourDouble = Double(hour)
+                                let defHours = Double(granularity.defaultDurationMinutes) / 60.0
+                                endHourDouble = Double(hour) + defHours
+                            }
+                            let dy = max(0, drag.translation.height)
+                            let stepHours = granularity.snapStepHours
+                            let rawHours = dy / max(30, slotHeight)
+                            let snappedAdditional = max(stepHours, round(rawHours / stepHours) * stepHours)
+                            endHourDouble = Double(hour) + snappedAdditional
+                            onDragCreationChanged(DragCreationState(
+                                date: date,
+                                startHour: startHourDouble,
+                                endHour: endHourDouble
+                            ))
                         }
-                        dragOffsetY = dy
-                        let stepHours = granularity.snapStepHours
-                        let rawHours = dragOffsetY / max(30, slotHeight)
-                        let snappedAdditional = max(stepHours, round(rawHours / stepHours) * stepHours)
-                        endHourDouble = Double(hour) + snappedAdditional
+                    default:
+                        break
                     }
                 }
                 .onEnded { value in
-                    let dy = value.translation.height
-                    if isDragging {
+                    if isHolding {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         let defHours = Double(granularity.defaultDurationMinutes) / 60.0
                         let finalEnd = endHourDouble > startHourDouble ? endHourDouble : (Double(hour) + defHours)
                         let startDate = makeDate(hourDouble: startHourDouble)
                         let endDate = makeDate(hourDouble: finalEnd)
-                        onDragCreate(startDate, endDate)
-                        isDragging = false
-                        dragOffsetY = 0
-                    } else if abs(dy) < 5 {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onQuickTap()
+                        onDragCreationEnded(startDate, endDate)
                     }
+                    isHolding = false
+                    onDragCreationChanged(nil)
                 }
-        )
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.22).onEnded { _ in
-                if !isDragging {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    isDragging = true
-                    startHourDouble = Double(hour)
-                    let defHours = Double(granularity.defaultDurationMinutes) / 60.0
-                    endHourDouble = Double(hour) + defHours
-                }
-            }
         )
     }
 }
@@ -1337,6 +1402,7 @@ struct DlsStackedBar: View {
     let item: ContextItem
     var currentDate: Date = Date()
     var slotHeight: CGFloat = 56
+    var cardHeight: CGFloat = 38
     var granularity: TimeGranularity = .oneHour
     let onIconTap: () -> Void
     let onBodyTap: () -> Void
@@ -1344,6 +1410,7 @@ struct DlsStackedBar: View {
     var onResizeDuration: ((Date) -> Void)? = nil
     var onRescheduleTime: ((Date, Date?) -> Void)? = nil
 
+    @State private var isHeld: Bool = false
     @State private var dragOffsetY: CGFloat = 0
     @State private var isDraggingMove: Bool = false
     @State private var resizeOffsetY: CGFloat = 0
@@ -1353,6 +1420,10 @@ struct DlsStackedBar: View {
 
     var isResizing: Bool {
         isResizingEnd || isResizingStart
+    }
+
+    var isInteracting: Bool {
+        isHeld || isDraggingMove || isResizing
     }
 
     var isContinuation: Bool {
@@ -1365,121 +1436,146 @@ struct DlsStackedBar: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Main card row
-            HStack(spacing: 8) {
-                // Status Icon (Leading Tap Target)
-                Button {
-                    onIconTap()
-                } label: {
-                    if item.status == .done {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(iconColor)
-                    } else if item.status == .paused {
-                        Image(systemName: "pause.circle.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(iconColor)
-                    } else {
-                        Circle()
-                            .strokeBorder(iconColor.opacity(0.85), lineWidth: 1.5)
-                            .frame(width: 14, height: 14)
+            // Main card body
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    // Status Icon (Leading Tap Target)
+                    Button {
+                        onIconTap()
+                    } label: {
+                        if item.status == .done {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(iconColor)
+                        } else if item.status == .paused {
+                            Image(systemName: "pause.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(iconColor)
+                        } else {
+                            Circle()
+                                .strokeBorder(iconColor.opacity(0.85), lineWidth: 1.5)
+                                .frame(width: 14, height: 14)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    // Multi-day continuation chip
+                    if isContinuation {
+                        HStack(spacing: 3) {
+                            Text("↩ Cont.")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(DlsTokens.timelineSpanningChip)
+                        .clipShape(Capsule())
+                    }
+
+                    // Title
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(textColor)
+                        .strikethrough(item.status == .done, color: textColor.opacity(0.6))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 0)
+
+                    // Multi-day outgoing badge
+                    if isOutgoing {
+                        HStack(spacing: 3) {
+                            Text("➜ +1d")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(DlsTokens.timelineSpanningChip)
+                        .clipShape(Capsule())
+                    }
+
+                    // Duration Time Badge if endAt is set
+                    if let end = item.endAt {
+                        Text(formatTimeRange(start: item.startAt, end: end))
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(textColor.opacity(0.85))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+
+                    // Dedicated Move Grip Handle
+                    if item.status != .done {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(textColor.opacity(0.45))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 1, coordinateSpace: .local)
+                                    .onChanged { drag in
+                                        if !isDraggingMove {
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                            isDraggingMove = true
+                                        }
+                                        dragOffsetY = drag.translation.height
+                                    }
+                                    .onEnded { _ in
+                                        if isDraggingMove {
+                                            let step = max(30, slotHeight)
+                                            let deltaHours = round(dragOffsetY / step)
+                                            if deltaHours != 0, let onReschedule = onReschedule {
+                                                let newDate = Calendar.current.date(byAdding: .hour, value: Int(deltaHours), to: item.startAt) ?? item.startAt
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                onReschedule(newDate)
+                                            }
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                                dragOffsetY = 0
+                                                isDraggingMove = false
+                                                isHeld = false
+                                            }
+                                        }
+                                    }
+                            )
                     }
                 }
-                .buttonStyle(.plain)
+                .frame(height: 38)
 
-                // Multi-day continuation chip
-                if isContinuation {
-                    HStack(spacing: 3) {
-                        Text("↩ Cont.")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(DlsTokens.timelineSpanningChip)
-                    .clipShape(Capsule())
+                // Multi-hour notes preview if card height is large
+                if cardHeight > 56, !item.notes.isEmpty {
+                    Text(item.notes)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(textColor.opacity(0.75))
+                        .lineLimit(max(1, Int((cardHeight - 44) / 16)))
+                        .padding(.leading, 22)
                 }
-
-                // Title
-                Text(item.title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(textColor)
-                    .strikethrough(item.status == .done, color: textColor.opacity(0.6))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
 
                 Spacer(minLength: 0)
-
-                // Multi-day outgoing badge
-                if isOutgoing {
-                    HStack(spacing: 3) {
-                        Text("➜ +1d")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(DlsTokens.timelineSpanningChip)
-                    .clipShape(Capsule())
-                }
-
-                // Duration Time Badge if endAt is set
-                if let end = item.endAt {
-                    Text(formatTimeRange(start: item.startAt, end: end))
-                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(textColor.opacity(0.85))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.black.opacity(0.12))
-                        .clipShape(Capsule())
-                }
-
-                // Dedicated Move Grip Handle (Instant Zero-Delay Drag to Move)
-                if item.status != .done {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(textColor.opacity(0.45))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 1, coordinateSpace: .local)
-                                .onChanged { drag in
-                                    if !isDraggingMove {
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                        isDraggingMove = true
-                                    }
-                                    dragOffsetY = drag.translation.height
-                                }
-                                .onEnded { _ in
-                                    if isDraggingMove {
-                                        let step = max(30, slotHeight)
-                                        let deltaHours = round(dragOffsetY / step)
-                                        if deltaHours != 0, let onReschedule = onReschedule {
-                                            let newDate = Calendar.current.date(byAdding: .hour, value: Int(deltaHours), to: item.startAt) ?? item.startAt
-                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                            onReschedule(newDate)
-                                        }
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                            dragOffsetY = 0
-                                            isDraggingMove = false
-                                        }
-                                    }
-                                }
-                        )
-                }
             }
             .padding(.horizontal, 10)
-            .frame(height: 38)
+            .padding(.vertical, cardHeight > 38 ? 4 : 0)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: max(38, cardHeight))
             .background(stageBackground)
             .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(isInteracting ? DlsTokens.timelineSpanningChip : Color.clear, lineWidth: 1.5)
+            )
             .contentShape(Rectangle())
             .offset(y: dragOffsetY)
-            .scaleEffect(isDraggingMove ? 1.04 : 1.0)
-            .shadow(color: isDraggingMove ? Color.black.opacity(0.3) : Color.clear, radius: 10, y: 5)
-            .zIndex(isDraggingMove ? 100 : (isResizing ? 90 : 1))
+            .scaleEffect(isDraggingMove ? 1.04 : (isHeld ? 1.01 : 1.0))
+            .shadow(color: isDraggingMove ? Color.black.opacity(0.3) : (isHeld ? Color.black.opacity(0.12) : Color.clear), radius: isDraggingMove ? 10 : 4, y: isDraggingMove ? 5 : 2)
+            .zIndex(isDraggingMove ? 100 : (isResizing ? 90 : (isHeld ? 50 : 1)))
             .onTapGesture {
-                if !isDraggingMove && !isResizing {
+                if isHeld {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        isHeld = false
+                    }
+                } else if !isDraggingMove && !isResizing {
                     onBodyTap()
                 }
             }
@@ -1515,6 +1611,18 @@ struct DlsStackedBar: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                                 dragOffsetY = 0
                                 isDraggingMove = false
+                                isHeld = false
+                            }
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.22)
+                    .onEnded { _ in
+                        if !isDraggingMove && !isResizing {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                isHeld.toggle()
                             }
                         }
                     }
@@ -1537,9 +1645,9 @@ struct DlsStackedBar: View {
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            // Top-Left Knob (Drag to adjust start time earlier/later)
+            // Top-Left Knob (Only visible when held / interacting!)
             .overlay(alignment: .topLeading) {
-                if item.status != .done {
+                if isInteracting && item.status != .done {
                     TimelineHandleKnob(size: 20, pipSize: 8)
                         .offset(x: -8, y: -8)
                         .contentShape(Rectangle().inset(by: -6))
@@ -1563,15 +1671,17 @@ struct DlsStackedBar: View {
                                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                                             resizeStartOffsetY = 0
                                             isResizingStart = false
+                                            isHeld = false
                                         }
                                     }
                                 }
                         )
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
-            // Bottom-Right Knob (Drag to expand duration / end time)
+            // Bottom-Right Knob (Only visible when held / interacting!)
             .overlay(alignment: .bottomTrailing) {
-                if item.status != .done {
+                if isInteracting && item.status != .done {
                     TimelineHandleKnob(size: 20, pipSize: 8)
                         .offset(x: 8, y: 8)
                         .contentShape(Rectangle().inset(by: -6))
@@ -1594,16 +1704,18 @@ struct DlsStackedBar: View {
                                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                                             resizeOffsetY = 0
                                             isResizingEnd = false
+                                            isHeld = false
                                         }
                                     }
                                 }
                         )
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
 
             // Expanding Cyan Outline Box (End adjustment - matches User Screenshot)
             if isResizingEnd {
-                let expandedHeight = 38 + resizeOffsetY
+                let expandedHeight = max(38, cardHeight + resizeOffsetY)
                 let resizeInfo = formatResizePreview(offsetY: resizeOffsetY)
 
                 ZStack(alignment: .topLeading) {
@@ -1659,7 +1771,7 @@ struct DlsStackedBar: View {
             if isResizingStart {
                 let topOffset = resizeStartOffsetY
                 let startInfo = formatStartResizePreview(offsetY: resizeStartOffsetY)
-                let adjustedHeight = max(38, 38 - resizeStartOffsetY)
+                let adjustedHeight = max(38, cardHeight - resizeStartOffsetY)
 
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
