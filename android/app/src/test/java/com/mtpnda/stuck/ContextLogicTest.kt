@@ -654,4 +654,48 @@ class ContextLogicTest {
         assertEquals(Color(0xFFE1F5FE), DlsTokens.timelineSpanningSoft)
         assertEquals(Color(0xFF0288D1), DlsTokens.timelineSpanningInk)
     }
+
+    // MARK: - ThoughtParser & Model Inference Tests
+
+    @Test
+    fun testThoughtParserNaturalLanguageTimeRangeAndNotes() {
+        val input = "Deep work 14:00 - 16:00 // Finish quarterly slides #active"
+        val parsed = ThoughtParser.parse(input = input, recordTelemetry = false)
+
+        assertEquals("Deep work", parsed.title)
+        assertEquals("Finish quarterly slides", parsed.notes)
+        assertEquals(ContextStatus.ACTIVE, parsed.status)
+        assertEquals(120, parsed.durationMinutes)
+        assertNotNull(parsed.startAt)
+        assertNotNull(parsed.endAt)
+    }
+
+    @Test
+    fun testThoughtParserDurationAndStageTags() {
+        val input = "Dentist appointment at 10:30 (45m) #planned"
+        val parsed = ThoughtParser.parse(input = input, recordTelemetry = false)
+
+        assertEquals("Dentist appointment", parsed.title)
+        assertEquals(ContextStatus.PLANNED, parsed.status)
+        assertEquals(BarColorTag.PURPLE, parsed.colorTag)
+        assertEquals(45, parsed.durationMinutes)
+        assertNotNull(parsed.startAt)
+        assertNotNull(parsed.endAt)
+    }
+
+    @Test
+    fun testThoughtParserBannerHashtagAndTelemetryMap() {
+        val input = "Quarterly System Redesign #banner // Core platform shift"
+        val parsed = ThoughtParser.parse(input = input, recordTelemetry = false)
+
+        assertEquals("Quarterly System Redesign", parsed.title)
+        assertTrue(parsed.isBanner)
+        assertEquals("Core platform shift", parsed.notes)
+
+        val map = parsed.toMap()
+        assertEquals("Quarterly System Redesign", map["title"])
+        assertEquals(true, map["is_banner"])
+        assertEquals("Core platform shift", map["notes"])
+        assertNotNull(map["latency_ms"])
+    }
 }

@@ -826,4 +826,84 @@ final class StuckTests: XCTestCase {
         let expectedEnd = newStart.addingTimeInterval(newEnd.timeIntervalSince(start))
         XCTAssertEqual(rescheduled?.endAt, expectedEnd, "Rescheduling must preserve expanded duration")
     }
+
+    // MARK: - Free Text ThoughtParser & Model Inference Tests
+
+    func testThoughtParserNaturalLanguageTimeRangeAndNotes() {
+        let input = "Deep work 14:00 - 16:00 // Finish quarterly slides #active"
+        let parsed = ThoughtParser.parse(input: input, recordTelemetry: false)
+
+        XCTAssertEqual(parsed.title, "Deep work")
+        XCTAssertEqual(parsed.notes, "Finish quarterly slides")
+        XCTAssertEqual(parsed.status, .active)
+        XCTAssertEqual(parsed.durationMinutes, 120)
+        XCTAssertNotNil(parsed.startAt)
+        XCTAssertNotNil(parsed.endAt)
+
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.hour, from: parsed.startAt!), 14)
+        XCTAssertEqual(cal.component(.minute, from: parsed.startAt!), 0)
+        XCTAssertEqual(cal.component(.hour, from: parsed.endAt!), 16)
+        XCTAssertEqual(cal.component(.minute, from: parsed.endAt!), 0)
+    }
+
+    func testThoughtParserDurationAndStageTags() {
+        let input = "Dentist appointment at 10:30 (45m) #planned"
+        let parsed = ThoughtParser.parse(input: input, recordTelemetry: false)
+
+        XCTAssertEqual(parsed.title, "Dentist appointment")
+        XCTAssertEqual(parsed.status, .planned)
+        XCTAssertEqual(parsed.colorTag, .purple)
+        XCTAssertEqual(parsed.durationMinutes, 45)
+        XCTAssertNotNil(parsed.startAt)
+        XCTAssertNotNil(parsed.endAt)
+
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.hour, from: parsed.startAt!), 10)
+        XCTAssertEqual(cal.component(.minute, from: parsed.startAt!), 30)
+        XCTAssertEqual(cal.component(.hour, from: parsed.endAt!), 11)
+        XCTAssertEqual(cal.component(.minute, from: parsed.endAt!), 15)
+    }
+
+    func testThoughtParserBannerHashtagAndTelemetryDict() {
+        let input = "Quarterly System Redesign #banner // Core platform shift"
+        let parsed = ThoughtParser.parse(input: input, recordTelemetry: false)
+
+        XCTAssertEqual(parsed.title, "Quarterly System Redesign")
+        XCTAssertTrue(parsed.isBanner)
+        XCTAssertEqual(parsed.notes, "Core platform shift")
+
+        let dict = parsed.toDictionary()
+        XCTAssertEqual(dict["title"] as? String, "Quarterly System Redesign")
+        XCTAssertEqual(dict["is_banner"] as? Bool, true)
+        XCTAssertEqual(dict["notes"] as? String, "Core platform shift")
+        XCTAssertNotNil(dict["latency_ms"])
+    }
+
+    // MARK: - Loki Observability & Circuit Breaker Tests
+
+    func testLokiObservabilitySovereignGatingDefaultOff() {
+        let obs = LokiObservability.shared
+        // Ensure default is off to honor Sovereign Zero-Cloud Invariant
+        obs.isEnabled = false
+        XCTAssertFalse(obs.isEnabled)
+
+        // Write while disabled must succeed with zero network I/O
+        obs.logError(category: "test", message: "Should be dropped safely")
+        obs.logQPS(action: "test_action")
+        obs.logModelInference(input: "test", output: [:], latencyMs: 0.1)
+    }
+
+    func testLokiObservabilityToggleAndEndpointStorage() {
+        let obs = LokiObservability.shared
+        obs.isEnabled = true
+        XCTAssertTrue(obs.isEnabled)
+
+        let customUrl = URL(string: "http://127.0.0.1:3100/loki/api/v1/push")!
+        obs.endpointUrl = customUrl
+        XCTAssertEqual(obs.endpointUrl, customUrl)
+
+        // Reset to false for clean test state
+        obs.isEnabled = false
+    }
 }

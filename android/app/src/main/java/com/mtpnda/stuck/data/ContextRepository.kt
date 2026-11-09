@@ -3,11 +3,15 @@ package com.mtpnda.stuck.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.mtpnda.stuck.model.*
+import com.mtpnda.stuck.observability.LokiObservability
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 import java.util.UUID
 
@@ -149,21 +153,35 @@ class ContextRepository(context: Context) {
         targetDate: Long,
         stageFilter: ContextStatus? = null
     ): String {
-        var parsedTitle = title.trim()
-        var parsedNotes = notes.trim()
-        if (parsedNotes.isEmpty() && parsedTitle.contains("//")) {
-            val parts = parsedTitle.split("//", limit = 2)
-            parsedTitle = parts[0].trim()
-            parsedNotes = parts[1].trim()
-        }
+        val targetLocalDate = Instant.ofEpochMilli(targetDate).atZone(ZoneId.systemDefault()).toLocalDate()
+        val parsed = ThoughtParser.parse(
+            input = title,
+            referenceDate = targetLocalDate,
+            defaultStatus = stageFilter,
+            recordTelemetry = true
+        )
 
-        val resolved = resolveQuickCaptureContext(stageFilter, targetDate)
+        val finalNotes = if (notes.isNotBlank()) notes else parsed.notes
+        val scheduled = parsed.startAt?.toEpochMilli() ?: resolveQuickCaptureContext(stageFilter, targetDate).scheduledDate
+        val endAtMs = parsed.endAt?.toEpochMilli()
+
+        LokiObservability.shared.logQPS(
+            action = "quick_capture",
+            metadata = mapOf(
+                "title" to parsed.title,
+                "stage" to parsed.status.name.lowercase(),
+                "has_duration" to (parsed.durationMinutes != null).toString()
+            )
+        )
+
         return addContext(
-            title = parsedTitle,
-            notes = parsedNotes,
-            startAt = resolved.scheduledDate,
-            status = resolved.status,
-            colorTag = resolved.colorTag
+            title = parsed.title,
+            notes = finalNotes,
+            startAt = scheduled,
+            endAt = endAtMs,
+            status = parsed.status,
+            colorTag = parsed.colorTag,
+            isBanner = parsed.isBanner
         )
     }
 
@@ -195,6 +213,7 @@ class ContextRepository(context: Context) {
         )
         _contexts.value = listOf(item) + _contexts.value
         save()
+        LokiObservability.shared.logQPS(action = "context_add", metadata = mapOf("id" to item.id, "stage" to item.status.name.lowercase()))
         return item.id
     }
 
@@ -391,27 +410,43 @@ class ContextRepository(context: Context) {
     }
 
     private fun save() {
-        prefs.edit()
-            .putString("profile_json", gson.toJson(_profile.value))
-            .putString("contexts_json", gson.toJson(_contexts.value))
-            .putInt("limit", _limit.value)
-            .apply()
+        try {
+            prefs.edit()
+                .putString("profile_json", gson.toJson(_profile.value))
+                .putString("contexts_json", gson.toJson(_contexts.value))
+                .putInt("limit", _limit.value)
+                .apply()
+        } catch (e: Exception) {
+            LokiObservability.shared.logError(
+                category = "store_persistence",
+                message = "Failed to save data to SharedPreferences",
+                error = e
+            )
+        }
     }
 
     private fun load() {
-        val profileJson = prefs.getString("profile_json", null)
-        if (!profileJson.isNullOrBlank()) {
-            _profile.value = gson.fromJson(profileJson, Profile::class.java)
+        try {
+            val profileJson = prefs.getString("profile_json", null)
+            if (!profileJson.isNullOrBlank()) {
+                _profile.value = gson.fromJson(profileJson, Profile::class.java)
+            }
+            val contextsJson = prefs.getString("contexts_json", null)
+            if (!contextsJson.isNullOrBlank()) {
+                val type = object : TypeToken<List<ContextItem>>() {}.type
+                _contexts.value = gson.fromJson(contextsJson, type) ?: emptyList()
+            }
+            if (_contexts.value.isEmpty()) {
+                seedSampleContexts()
+            }
+            _limit.value = prefs.getInt("limit", 3)
+            _isLocked.value = _profile.value?.faceId ?: false
+        } catch (e: Exception) {
+            LokiObservability.shared.logError(
+                category = "store_persistence",
+                message = "Failed to load data from SharedPreferences",
+                error = e
+            )
         }
-        val contextsJson = prefs.getString("contexts_json", null)
-        if (!contextsJson.isNullOrBlank()) {
-            val type = object : TypeToken<List<ContextItem>>() {}.type
-            _contexts.value = gson.fromJson(contextsJson, type) ?: emptyList()
-        }
-        if (_contexts.value.isEmpty()) {
-            seedSampleContexts()
-        }
-        _limit.value = prefs.getInt("limit", 3)
-        _isLocked.value = _profile.value?.faceId ?: false
     }
 }

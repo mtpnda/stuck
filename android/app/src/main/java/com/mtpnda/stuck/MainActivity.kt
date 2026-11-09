@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.mtpnda.stuck.data.ContextRepository
 import com.mtpnda.stuck.model.ContextStatus
+import com.mtpnda.stuck.observability.LokiObservability
 import com.mtpnda.stuck.ui.screens.*
 import com.mtpnda.stuck.ui.theme.ContextColors
 import com.mtpnda.stuck.ui.theme.ContextsTheme
@@ -18,6 +19,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LokiObservability.shared.initialize(applicationContext)
+        LokiObservability.shared.logLifecycle("app_create")
         repository = ContextRepository(applicationContext)
 
         setContent {

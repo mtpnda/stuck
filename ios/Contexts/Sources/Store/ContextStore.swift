@@ -193,24 +193,33 @@ final class ContextStore: ObservableObject {
         targetDate: Date,
         stageFilter: ContextStatus? = nil
     ) -> String {
-        var parsedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        var parsedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if parsedNotes.isEmpty && parsedTitle.contains("//") {
-            let parts = parsedTitle.components(separatedBy: "//")
-            parsedTitle = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            parsedNotes = parts.dropFirst().joined(separator: "//").trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        let (resolvedStatus, resolvedColor, scheduled) = Self.resolveQuickCaptureContext(
-            selectedFilter: stageFilter,
-            targetDate: targetDate
+        let parsed = ThoughtParser.parse(
+            input: title,
+            referenceDate: targetDate,
+            defaultStatus: stageFilter,
+            recordTelemetry: true
         )
+
+        let finalNotes = !notes.isEmpty ? notes : parsed.notes
+        let scheduled = parsed.startAt ?? Self.resolveQuickCaptureContext(selectedFilter: stageFilter, targetDate: targetDate).scheduledDate
+
+        LokiObservability.shared.logQPS(
+            action: "quick_capture",
+            metadata: [
+                "title": parsed.title,
+                "stage": parsed.status.rawValue,
+                "has_duration": parsed.durationMinutes != nil ? "true" : "false"
+            ]
+        )
+
         return addContext(
-            title: parsedTitle,
-            notes: parsedNotes,
+            title: parsed.title,
+            notes: finalNotes,
             startAt: scheduled,
-            status: resolvedStatus,
-            colorTag: resolvedColor
+            endAt: parsed.endAt,
+            status: parsed.status,
+            colorTag: parsed.colorTag,
+            isBanner: parsed.isBanner
         )
     }
 
@@ -243,6 +252,7 @@ final class ContextStore: ObservableObject {
         )
         contexts.insert(item, at: 0)
         save()
+        LokiObservability.shared.logQPS(action: "context_add", metadata: ["id": item.id, "stage": item.status.rawValue])
         return item.id
     }
 
@@ -472,19 +482,32 @@ final class ContextStore: ObservableObject {
 
     private func save() {
         let data = PersistedData(profile: profile, contexts: contexts, limit: limit)
-        if let encoded = try? JSONEncoder().encode(data) {
+        do {
+            let encoded = try JSONEncoder().encode(data)
             UserDefaults.standard.set(encoded, forKey: storageKey)
+        } catch {
+            LokiObservability.shared.logError(
+                category: "store_persistence",
+                message: "Failed to encode contexts for storage",
+                error: error
+            )
         }
     }
 
     private func loadFromDisk() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode(PersistedData.self, from: data) else {
-            return
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+        do {
+            let decoded = try JSONDecoder().decode(PersistedData.self, from: data)
+            self.profile = decoded.profile
+            self.contexts = decoded.contexts
+            self.limit = decoded.limit
+            self.isLocked = decoded.profile?.faceId ?? false
+        } catch {
+            LokiObservability.shared.logError(
+                category: "store_persistence",
+                message: "Failed to decode PersistedData from disk",
+                error: error
+            )
         }
-        self.profile = decoded.profile
-        self.contexts = decoded.contexts
-        self.limit = decoded.limit
-        self.isLocked = decoded.profile?.faceId ?? false
     }
 }

@@ -18,6 +18,8 @@
 		A5C4D8D34D2D5CD96F2C1720 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA90203F3D07CFA54B04CC6 /* Theme.swift */; };
 		AB0DC0EA497E8EB78CBA6E70 /* ContextItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0B406D225741BA80247DDC /* ContextItem.swift */; };
 		BA5357D6BE65A420C62C9793 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDD8E8855D5166EAB535DC5F /* ProfileView.swift */; };
+		AA11BB22CC33DD44EE550001 /* ThoughtParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE550002 /* ThoughtParser.swift */; };
+		AA11BB22CC33DD44EE550003 /* LokiObservability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE550004 /* LokiObservability.swift */; };
 		C64187673595183B6CA095F3 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF140B247D1B7B6837042BD /* Components.swift */; };
 		CE39A89AF266138043616059 /* StuckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC583BECC0890362A4D6DC7A /* StuckApp.swift */; };
 		FFBCB4C623B85724B8EE1AD5 /* ContextSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C261CDFF2A4E4424C6A1616C /* ContextSheetView.swift */; };
@@ -50,6 +52,8 @@
 		C261CDFF2A4E4424C6A1616C /* ContextSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextSheetView.swift; sourceTree = "<group>"; };
 		FC583BECC0890362A4D6DC7A /* StuckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StuckApp.swift; sourceTree = "<group>"; };
 		FE0B406D225741BA80247DDC /* ContextItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextItem.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE550002 /* ThoughtParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtParser.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE550004 /* LokiObservability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LokiObservability.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -77,10 +81,19 @@
 				0E333421D892C34AB0FA597C /* App */,
 				3D1FA13365C06695D24935CF /* Design */,
 				9D5D282AB6B0912F49A5A886 /* Model */,
+				AA11BB22CC33DD44EE550005 /* Observability */,
 				80158CDBC13D6737C79F8974 /* Store */,
 				6F03EAE102411EDE2BD49B07 /* Views */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		AA11BB22CC33DD44EE550005 /* Observability */ = {
+			isa = PBXGroup;
+			children = (
+				AA11BB22CC33DD44EE550004 /* LokiObservability.swift */,
+			);
+			path = Observability;
 			sourceTree = "<group>";
 		};
 		6F03EAE102411EDE2BD49B07 /* Views */ = {
@@ -134,6 +147,7 @@
 			children = (
 				FE0B406D225741BA80247DDC /* ContextItem.swift */,
 				BDE66FE1F5BA832FCF8AB94D /* Profile.swift */,
+				AA11BB22CC33DD44EE550002 /* ThoughtParser.swift */,
 			);
 			path = Model;
 			sourceTree = "<group>";
@@ -249,6 +263,8 @@
 				BA5357D6BE65A420C62C9793 /* ProfileView.swift in Sources */,
 				CE39A89AF266138043616059 /* StuckApp.swift in Sources */,
 				A5C4D8D34D2D5CD96F2C1720 /* Theme.swift in Sources */,
+				AA11BB22CC33DD44EE550001 /* ThoughtParser.swift in Sources */,
+				AA11BB22CC33DD44EE550003 /* LokiObservability.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

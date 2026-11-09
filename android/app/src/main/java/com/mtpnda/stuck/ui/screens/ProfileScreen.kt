@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mtpnda.stuck.data.ContextRepository
+import com.mtpnda.stuck.observability.LokiObservability
 import com.mtpnda.stuck.ui.components.*
 import com.mtpnda.stuck.ui.theme.ContextColors
 
@@ -147,6 +148,98 @@ fun ProfileScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = ContextColors.InkMuted
             )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Developer Observability (Loki & Grafana)
+        var isObservabilityEnabled by remember { mutableStateOf(LokiObservability.shared.isEnabled) }
+        var lokiEndpointText by remember { mutableStateOf(LokiObservability.shared.endpointUrl) }
+        var testStatusText by remember { mutableStateOf<String?>(null) }
+        var isTesting by remember { mutableStateOf(false) }
+
+        SoftCard(padding = 20.dp) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Debug Observability", style = MaterialTheme.typography.titleMedium, color = ContextColors.InkPrimary)
+                        Text(
+                            "Push telemetry & inference logs to Grafana / Loki",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ContextColors.InkMuted
+                        )
+                    }
+                    Switch(
+                        checked = isObservabilityEnabled,
+                        onCheckedChange = {
+                            isObservabilityEnabled = it
+                            LokiObservability.shared.isEnabled = it
+                        }
+                    )
+                }
+
+                if (isObservabilityEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Loki Push Endpoint", style = MaterialTheme.typography.labelSmall, color = ContextColors.InkSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = lokiEndpointText,
+                        onValueChange = {
+                            lokiEndpointText = it
+                            LokiObservability.shared.endpointUrl = it
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = ContextColors.InkPrimary,
+                            unfocusedTextColor = ContextColors.InkPrimary,
+                            focusedBorderColor = ContextColors.InfoInk,
+                            unfocusedBorderColor = ContextColors.BorderSubtle
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                isTesting = true
+                                testStatusText = "Connecting..."
+                                LokiObservability.shared.testConnection { ok, msg ->
+                                    isTesting = false
+                                    testStatusText = if (ok) "✓ $msg" else "✗ $msg"
+                                }
+                            },
+                            enabled = !isTesting,
+                            colors = ButtonDefaults.buttonColors(containerColor = ContextColors.Charcoal)
+                        ) {
+                            Text(if (isTesting) "Testing..." else "Test Connection", color = ContextColors.OnCharcoal)
+                        }
+
+                        testStatusText?.let { st ->
+                            Text(
+                                text = st,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (st.startsWith("✓")) ContextColors.CalmInk else ContextColors.AlertInk
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Zero-Cloud Guarantee: Strictly off by default. Only activates when enabled above. Circuit breaker fast-drops on failure.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ContextColors.InkMuted
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
