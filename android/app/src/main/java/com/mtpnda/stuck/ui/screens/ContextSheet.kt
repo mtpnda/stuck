@@ -36,14 +36,17 @@ fun ContextSheet(
     initialStatus: ContextStatus = ContextStatus.ACTIVE,
     initialDate: Long = System.currentTimeMillis(),
     initialEndDate: Long? = null,
+    initialTitle: String = "",
+    initialNotes: String = "",
+    initialIsBanner: Boolean = false,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val contexts by repository.contexts.collectAsState()
     val existing = remember(contexts, contextId) { contexts.firstOrNull { it.id == contextId } }
 
-    var title by remember { mutableStateOf(existing?.title ?: "") }
-    var notes by remember { mutableStateOf(existing?.notes ?: "") }
+    var title by remember { mutableStateOf(existing?.title ?: initialTitle) }
+    var notes by remember { mutableStateOf(existing?.notes ?: initialNotes) }
     var status by remember { mutableStateOf(existing?.status ?: initialStatus) }
     val defaultColor = when (initialStatus) {
         ContextStatus.ACTIVE -> BarColorTag.BLUE
@@ -53,7 +56,7 @@ fun ContextSheet(
         ContextStatus.DROPPED -> BarColorTag.CHARCOAL
     }
     var colorTag by remember { mutableStateOf(existing?.colorTag ?: defaultColor) }
-    var isBanner by remember { mutableStateOf(existing?.isBanner ?: false) }
+    var isBanner by remember { mutableStateOf(existing?.isBanner ?: initialIsBanner) }
     var scheduledDate by remember { mutableStateOf(existing?.startAt ?: initialDate) }
     var hasEndTime by remember { mutableStateOf(existing?.endAt != null || initialEndDate != null) }
     var scheduledEndDate by remember { mutableStateOf(existing?.endAt ?: initialEndDate ?: (scheduledDate + 3600_000L)) }

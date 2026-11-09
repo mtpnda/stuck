@@ -133,10 +133,10 @@ struct BoardView: View {
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
     @State private var activePlaceholder: SchedulePlaceholder? = nil
     @State private var activeDragCreation: DragCreationState? = nil
-    @State private var newThoughtConfig: (status: ContextStatus, startDate: Date, endDate: Date?, title: String, isBanner: Bool)? = nil
+    @State private var newThoughtConfig: (status: ContextStatus, startDate: Date, endDate: Date?, title: String, notes: String, isBanner: Bool)? = nil
 
-    private func openCreateForm(status: ContextStatus, startDate: Date, endDate: Date?, title: String = "", isBanner: Bool = false) {
-        newThoughtConfig = (status: status, startDate: startDate, endDate: endDate, title: title, isBanner: isBanner)
+    private func openCreateForm(status: ContextStatus, startDate: Date, endDate: Date?, title: String = "", notes: String = "", isBanner: Bool = false) {
+        newThoughtConfig = (status: status, startDate: startDate, endDate: endDate, title: title, notes: notes, isBanner: isBanner)
         activePlaceholder = nil
         isCreatingNew = true
     }
@@ -267,6 +267,7 @@ struct BoardView: View {
                         initialDate: newThoughtConfig?.startDate ?? quickCaptureContext.scheduledDate,
                         initialEndDate: newThoughtConfig?.endDate,
                         initialTitle: newThoughtConfig?.title ?? "",
+                        initialNotes: newThoughtConfig?.notes ?? "",
                         initialIsBanner: newThoughtConfig?.isBanner ?? false,
                         onDismiss: {
                             isCreatingNew = false
@@ -1053,10 +1054,21 @@ struct BoardView: View {
     private func commitQuickThought() {
         let trimmed = quickThoughtText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            store.quickCapture(
-                title: trimmed,
-                targetDate: selectedDay,
-                stageFilter: selectedStageFilter
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            let parsed = ThoughtParser.parse(
+                input: trimmed,
+                referenceDate: selectedDay,
+                defaultStatus: selectedStageFilter,
+                recordTelemetry: true
+            )
+            let start = parsed.startAt ?? quickCaptureContext.scheduledDate
+            openCreateForm(
+                status: parsed.status,
+                startDate: start,
+                endDate: parsed.endAt,
+                title: parsed.title,
+                notes: parsed.notes,
+                isBanner: parsed.isBanner
             )
             quickThoughtText = ""
         }

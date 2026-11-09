@@ -24,6 +24,7 @@ struct ContextSheetView: View {
         initialDate: Date = Date(),
         initialEndDate: Date? = nil,
         initialTitle: String = "",
+        initialNotes: String = "",
         initialIsBanner: Bool = false,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -31,6 +32,7 @@ struct ContextSheetView: View {
         self.contextId = contextId
         self.onDismiss = onDismiss
         self._title = State(initialValue: initialTitle)
+        self._notes = State(initialValue: initialNotes)
         self._isBanner = State(initialValue: initialIsBanner)
         self._status = State(initialValue: initialStatus)
         self._scheduledDate = State(initialValue: initialDate)

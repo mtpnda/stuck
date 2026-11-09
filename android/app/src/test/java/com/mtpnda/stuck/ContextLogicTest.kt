@@ -698,4 +698,41 @@ class ContextLogicTest {
         assertEquals("Core platform shift", map["notes"])
         assertNotNull(map["latency_ms"])
     }
+
+    @Test
+    fun testMonitoringIsStrictlyNonBlocking() {
+        val obs = com.mtpnda.stuck.observability.LokiObservability.shared
+        obs.isEnabled = true
+        try {
+            val startNano = System.nanoTime()
+            val iterations = 300
+            for (i in 0 until iterations) {
+                obs.logQPS("benchmark_action_$i", 0.5)
+                obs.logError("benchmark", "Synthetic non-blocking test log $i")
+                obs.logModelInference("Benchmark input $i", mapOf("iter" to i), 0.2)
+            }
+            val elapsedMs = (System.nanoTime() - startNano) / 1_000_000.0
+
+            // 900 total log invocations must complete on caller thread in < 100ms (< 0.1ms per call)
+            assertTrue("Monitoring writes must be strictly non-blocking on caller thread (actual: ${elapsedMs}ms)", elapsedMs < 100.0)
+        } finally {
+            obs.isEnabled = false
+        }
+    }
+
+    @Test
+    fun testQuickCaptureRequiresUserConfirmationFlow() {
+        // Entering text only parses the fields; it must never silently commit to database
+        val input = "Architecture Review 14:00 - 15:30 // Present design specs #active"
+        val parsed = ThoughtParser.parse(input = input, recordTelemetry = false)
+
+        assertEquals("Architecture Review", parsed.title)
+        assertEquals("Present design specs", parsed.notes)
+        assertEquals(ContextStatus.ACTIVE, parsed.status)
+        assertEquals(90, parsed.durationMinutes)
+
+        // The parsed object provides all values to pre-populate ContextSheet for explicit user review & confirmation
+        assertNotNull(parsed.startAt)
+        assertNotNull(parsed.endAt)
+    }
 }

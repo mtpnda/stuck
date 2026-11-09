@@ -38,6 +38,9 @@ class MainActivity : ComponentActivity() {
                     var newSheetInitialStatus by remember { mutableStateOf(ContextStatus.ACTIVE) }
                     var newSheetInitialDate by remember { mutableStateOf(System.currentTimeMillis()) }
                     var newSheetInitialEndDate by remember { mutableStateOf<Long?>(null) }
+                    var newSheetInitialTitle by remember { mutableStateOf("") }
+                    var newSheetInitialNotes by remember { mutableStateOf("") }
+                    var newSheetInitialIsBanner by remember { mutableStateOf(false) }
 
                     if (profile == null) {
                         LoginScreen(repository = repository)
@@ -55,9 +58,15 @@ class MainActivity : ComponentActivity() {
                             initialStatus = newSheetInitialStatus,
                             initialDate = newSheetInitialDate,
                             initialEndDate = newSheetInitialEndDate,
+                            initialTitle = newSheetInitialTitle,
+                            initialNotes = newSheetInitialNotes,
+                            initialIsBanner = newSheetInitialIsBanner,
                             onDismiss = {
                                 isShowingNewSheet = false
                                 newSheetInitialEndDate = null
+                                newSheetInitialTitle = ""
+                                newSheetInitialNotes = ""
+                                newSheetInitialIsBanner = false
                             }
                         )
                     } else if (sheetContextId != null) {
@@ -70,10 +79,13 @@ class MainActivity : ComponentActivity() {
                         BoardScreen(
                             repository = repository,
                             onOpenProfile = { isShowingProfile = true },
-                            onNewContext = { status, startDate, endDate ->
+                            onNewContext = { status, startDate, endDate, title, notes, isBanner ->
                                 newSheetInitialStatus = status
                                 newSheetInitialDate = startDate
                                 newSheetInitialEndDate = endDate
+                                newSheetInitialTitle = title ?: ""
+                                newSheetInitialNotes = notes ?: ""
+                                newSheetInitialIsBanner = isBanner ?: false
                                 isShowingNewSheet = true
                             },
                             onEditContext = { id -> sheetContextId = id }

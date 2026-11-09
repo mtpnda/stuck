@@ -44,10 +44,13 @@ import com.mtpnda.stuck.data.ContextRepository
 import com.mtpnda.stuck.model.BarColorTag
 import com.mtpnda.stuck.model.ContextItem
 import com.mtpnda.stuck.model.ContextStatus
+import com.mtpnda.stuck.model.ThoughtParser
 import com.mtpnda.stuck.ui.components.EmojiAvatar
 import com.mtpnda.stuck.ui.theme.ContextColors
 import com.mtpnda.stuck.ui.theme.DlsScales
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -167,7 +170,7 @@ private fun isHourCovered(hour: Int, items: List<ContextItem>, dayMillis: Long, 
 fun BoardScreen(
     repository: ContextRepository,
     onOpenProfile: () -> Unit,
-    onNewContext: (ContextStatus, Long, Long?) -> Unit,
+    onNewContext: (ContextStatus, Long, Long?, String?, String?, Boolean?) -> Unit,
     onEditContext: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -293,7 +296,10 @@ fun BoardScreen(
                             onNewContext(
                                 quickCaptureContext.status,
                                 quickCaptureContext.scheduledDate,
-                                quickCaptureContext.scheduledDate + durMillis
+                                quickCaptureContext.scheduledDate + durMillis,
+                                null,
+                                null,
+                                null
                             )
                         }
                 ) {
@@ -501,7 +507,7 @@ fun BoardScreen(
                         onClearPlaceholder = { activePlaceholder = null },
                         onHoldCreateThought = { status, startAt, endAt ->
                             activePlaceholder = null
-                            onNewContext(status, startAt, endAt)
+                            onNewContext(status, startAt, endAt, null, null, null)
                         },
                         onRescheduleThought = { id, newStartAt, newEndAt ->
                             repository.rescheduleTime(id, newStartAt, newEndAt)
@@ -584,10 +590,22 @@ fun BoardScreen(
                     onClick = {
                         val trimmed = quickThoughtText.trim()
                         if (trimmed.isNotBlank()) {
-                            repository.quickCapture(
-                                title = trimmed,
-                                targetDate = selectedDayMillis,
-                                stageFilter = selectedStageFilter
+                            val targetLocalDate = Instant.ofEpochMilli(selectedDayMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            val parsed = ThoughtParser.parse(
+                                input = trimmed,
+                                referenceDate = targetLocalDate,
+                                defaultStatus = selectedStageFilter,
+                                recordTelemetry = true
+                            )
+                            val startMillis = parsed.startAt?.toEpochMilli() ?: quickCaptureContext.scheduledDate
+                            val endMillis = parsed.endAt?.toEpochMilli()
+                            onNewContext(
+                                parsed.status,
+                                startMillis,
+                                endMillis,
+                                parsed.title,
+                                parsed.notes,
+                                parsed.isBanner
                             )
                             quickThoughtText = ""
                         }

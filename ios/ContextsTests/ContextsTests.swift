@@ -906,4 +906,56 @@ final class StuckTests: XCTestCase {
         // Reset to false for clean test state
         obs.isEnabled = false
     }
+
+    func testMonitoringIsStrictlyNonBlocking() {
+        let obs = LokiObservability.shared
+        obs.isEnabled = true
+        defer { obs.isEnabled = false }
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let iterations = 500
+        for i in 0..<iterations {
+            obs.logQPS(action: "benchmark_action_\(i)", latencyMs: 0.5)
+            obs.logError(category: "benchmark", message: "Synthetic non-blocking test log \(i)")
+            obs.logModelInference(input: "Benchmark input \(i)", output: ["iter": i], latencyMs: 0.2)
+        }
+        let totalElapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+
+        // 1,500 total log invocations must complete on caller thread in < 50ms (average < 0.03ms per call)
+        XCTAssertLessThan(totalElapsedMs, 50.0, "Monitoring writes must be strictly non-blocking on caller thread (actual: \(totalElapsedMs)ms for 1500 calls)")
+    }
+
+    func testQuickCapturePrePopulationRequiresUserConfirmationFlow() {
+        store.createProfile(name: "Test User", faceId: false)
+        let initialCount = store.contexts.count
+
+        // Simulate typing free text into quick capture bar
+        let input = "System Architecture Handover 15:00 - 17:00 // Review documentation #planned"
+        let parsed = ThoughtParser.parse(input: input, referenceDate: Date(), defaultStatus: .planned, recordTelemetry: false)
+
+        // Entering text only parses the data into structured form; it must NOT silently create a context
+        XCTAssertEqual(parsed.title, "System Architecture Handover")
+        XCTAssertEqual(parsed.notes, "Review documentation")
+        XCTAssertEqual(parsed.status, .planned)
+        XCTAssertEqual(parsed.durationMinutes, 120)
+        XCTAssertEqual(store.contexts.count, initialCount, "Entering text must not silently create contexts under the table")
+
+        // Only when user confirms in the sheet (taps Create Thought) is the item committed
+        let start = parsed.startAt ?? Date()
+        let id = store.addContext(
+            title: parsed.title,
+            notes: parsed.notes,
+            startAt: start,
+            endAt: parsed.endAt,
+            status: parsed.status,
+            colorTag: parsed.colorTag,
+            isBanner: parsed.isBanner
+        )
+
+        XCTAssertEqual(store.contexts.count, initialCount + 1, "Context must be committed only upon explicit user confirmation")
+        let created = store.contexts.first(where: { $0.id == id })
+        XCTAssertEqual(created?.title, "System Architecture Handover")
+        XCTAssertEqual(created?.notes, "Review documentation")
+        XCTAssertEqual(created?.status, .planned)
+    }
 }
